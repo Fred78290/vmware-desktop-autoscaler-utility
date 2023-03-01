@@ -1,0 +1,24 @@
+{
+	// Utilisez IntelliSense pour en savoir plus sur les attributs possibles.
+	// Pointez pour afficher la description des attributs existants.
+	// Pour plus d'informations, visitez : https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Launch",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+            "program": "${workspaceFolder}",
+            "cwd": "${env:HOME}/go/src/github.com/Fred78290/vmware-desktop-autoscaler-utility",
+			"env": {
+
+			},
+			"args": [
+				"grpc",
+				"--address=unix:/tmp/vmware-desktop-utility.sock",
+				"--address=tcp:127.0.0.1:5622"
+			]
+		}
+	]
+}
