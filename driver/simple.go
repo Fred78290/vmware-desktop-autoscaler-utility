@@ -8,13 +8,13 @@ import (
 )
 
 type SimpleDriver struct {
-	driver      *vagrant_driver.SimpleDriver
+	vagrant_driver.SimpleDriver
 	vmwarePaths *utility.VmwarePaths
 	vmrun       service.Vmrun
 }
 
-func (b *SimpleDriver) GetDriver() vagrant_driver.Driver {
-	return b.driver
+func (d *SimpleDriver) GetDriver() vagrant_driver.Driver {
+	return &d.SimpleDriver
 }
 
 func (b *SimpleDriver) GetVmwarePaths() *utility.VmwarePaths {
@@ -25,14 +25,14 @@ func (b *SimpleDriver) GetVmrun() service.Vmrun {
 	return b.vmrun
 }
 
-func NewSimpleDriver(vmxPath *string, b BaseDriver, logger hclog.Logger) (*SimpleDriver, error) {
-	if driver, err := vagrant_driver.NewSimpleDriver(vmxPath, b.GetBaseDriver(), logger); err != nil {
+func NewSimpleDriver(vmxPath *string, b *BaseDriver, logger hclog.Logger) (*SimpleDriver, error) {
+	if driver, err := vagrant_driver.NewSimpleDriver(vmxPath, &b.BaseDriver, logger); err != nil {
 		return nil, err
 	} else {
 		driver := &SimpleDriver{
-			driver:      driver,
-			vmwarePaths: b.GetVmwarePaths(),
-			vmrun:       b.GetVmrun(),
+			SimpleDriver: *driver,
+			vmwarePaths:  b.GetVmwarePaths(),
+			vmrun:        b.GetVmrun(),
 		}
 
 		return driver, nil

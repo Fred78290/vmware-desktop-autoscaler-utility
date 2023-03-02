@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utility"
+	"github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/utility"
 )
 
 // Template for init.d script

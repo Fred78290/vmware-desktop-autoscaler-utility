@@ -57,11 +57,11 @@ func (r *RegexpHandler) ServeHTTP(writ http.ResponseWriter, req *http.Request) {
 		if route.path.MatchString(req.URL.Path) {
 			if r.api.Driver.GetDriver().Validated() {
 				route.handler.ServeHTTP(writ, req)
-				return
 			} else {
 				r.invalidDriver(writ)
-				return
 			}
+
+			return
 		}
 	}
 
@@ -75,21 +75,24 @@ type StandardResponse struct {
 
 func (r *RegexpHandler) respond(writ http.ResponseWriter, body interface{}, code int) {
 	writ.WriteHeader(code)
+
 	if body != nil {
 		if err := json.NewEncoder(writ).Encode(body); err != nil {
 			r.logger.Error("error encoding response body", "error", err)
-			http.Error(writ, http.StatusText(500), 500)
+
+			http.Error(writ, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		}
 	}
+
 	r.logger.Info("request complete", "code", code, "request-id", fmt.Sprintf("%p", writ))
 }
 
 func (r *RegexpHandler) notFound(writ http.ResponseWriter) {
-	r.error(writ, "not found", 404)
+	r.error(writ, "not found", http.StatusNotFound)
 }
 
 func (r *RegexpHandler) invalidDriver(writ http.ResponseWriter) {
-	r.error(writ, "Validation failure: "+r.api.Driver.GetDriver().ValidationReason(), 500)
+	r.error(writ, "Validation failure: "+r.api.Driver.GetDriver().ValidationReason(), http.StatusInternalServerError)
 }
 
 func (r *RegexpHandler) invalidRequester(writ http.ResponseWriter, req *http.Request) bool {
@@ -101,22 +104,26 @@ func (r *RegexpHandler) invalidRequester(writ http.ResponseWriter, req *http.Req
 	}
 
 	if invalid {
-		r.error(writ, "invalid client requester", 403)
+		r.error(writ, "invalid client requester", http.StatusForbidden)
 	}
+
 	return invalid
 }
 
 func (r *RegexpHandler) error(writ http.ResponseWriter, msg string, code int) {
 	r.logger.Debug("request error", "code", code, "message", msg)
+
 	response := StandardResponse{
 		Code:    code,
-		Message: msg}
+		Message: msg,
+	}
+
 	r.respond(writ, response, code)
 }
 
 // VMware root handler
 func (r *RegexpHandler) handleRoot(writ http.ResponseWriter, req *http.Request) {
-	r.error(writ, "not implemented", 501)
+	r.error(writ, "not implemented", http.StatusNotImplemented)
 }
 
 // Custom handlers
@@ -125,27 +132,36 @@ func (r *RegexpHandler) handleStatus(writ http.ResponseWriter, req *http.Request
 		"status":   "running",
 		"inflight": strconv.Itoa(r.api.Inflight()),
 	}
-	r.respond(writ, response, 200)
+
+	r.respond(writ, response, http.StatusOK)
 }
 
 func (r *RegexpHandler) handleVersion(writ http.ResponseWriter, req *http.Request) {
-	response := map[string]string{"version": version.VERSION}
-	r.respond(writ, response, 200)
+	response := map[string]string{
+		"version": version.VERSION,
+	}
+
+	r.respond(writ, response, http.StatusOK)
 }
 
 func (r *RegexpHandler) pathParams(path string) map[string]string {
 	params := map[string]string{}
+
 	for _, route := range r.routes {
 		match := route.path.FindStringSubmatch(path)
+
 		if match != nil {
 			for i, name := range route.path.SubexpNames() {
 				if i == 0 {
 					continue
 				}
+
 				params[name] = match[i]
 			}
-			return params
+
+			break
 		}
 	}
+
 	return params
 }

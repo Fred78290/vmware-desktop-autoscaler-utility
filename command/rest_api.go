@@ -62,20 +62,23 @@ func BuildRestApiCommand(name string, ui cli.Ui) cli.CommandFactory {
 }
 
 func (c *RestApiCommand) Run(args []string) int {
+	var err error
+	var restApi *server.Api
+
 	exitCode := 1
-	err := c.setup(args)
-	if err != nil {
+
+	if err = c.setup(args); err != nil {
 		c.UI.Error("Failed to initialize: " + err.Error())
 		return exitCode
 	}
 
-	restApi, err := c.buildRestApi(c.Config.Driver, c.Config.Port)
-	if err != nil {
+	if restApi, err = c.buildRestApi(c.Config.Driver, c.Config.Port); err != nil {
 		if c.Config.LogDisplay {
 			c.logger.Error("api setup failure", "error", err)
 		} else {
 			c.UI.Error("Failed to setup VMWare desktop utility API service - " + err.Error())
 		}
+
 		return exitCode
 	}
 
@@ -85,87 +88,94 @@ func (c *RestApiCommand) Run(args []string) int {
 		c.UI.Info("Starting the VMWare desktop utility API service")
 	}
 
-	err = restApi.Start()
-	if err != nil {
+	if err = restApi.Start(); err != nil {
 		if c.Config.LogDisplay {
 			c.logger.Error("startup failure", "error", err)
 		} else {
 			c.UI.Error("Failed to start the VMWare desktop utility API service - " + err.Error())
 		}
+
 		return exitCode
 	}
+
 	util.RegisterShutdownTask(func() {
 		if c.Config.LogDisplay {
 			c.logger.Info("halting serivce")
 		} else {
 			c.UI.Info("Halting the VMWare desktop utility API service")
 		}
+
 		restApi.Stop()
 	})
+
 	<-restApi.HaltedChan
+
 	return 0
 }
 
-func (c *RestApiCommand) buildRestApi(driverName string, port int64) (a *server.Api, err error) {
+func (c *RestApiCommand) buildRestApi(driverName string, port int64) (*server.Api, error) {
 	bindAddr := c.Config.Address
 	bindPort := int(port)
 
 	// Start with building the base driver
-	b, err := driver.NewBaseDriver(nil, c.Config.LicenseOverride, c.logger)
-	if err != nil {
+	if b, err := driver.NewBaseDriver(nil, c.Config.LicenseOverride, c.logger); err != nil {
 		c.logger.Error("base driver setup failure", "error", err)
-		return
-	}
+		return nil, err
+	} else {
+		var drv driver.Driver
+		var a *server.Api
 
-	// Allow the user to define the driver. It may not work, but they're the boss
-	attempt_vmrest := true
-	var drv driver.Driver
-	switch driverName {
-	case "simple":
-		c.logger.Warn("creating simple driver via user request")
-		drv, err = driver.NewSimpleDriver(nil, b, c.logger)
-		attempt_vmrest = false
-	case "advanced":
-		c.logger.Warn("creating advanced driver via user request")
-		drv, err = driver.NewAdvancedDriver(nil, b, c.logger)
-		attempt_vmrest = false
-	default:
-		if driverName != "" {
-			c.logger.Warn("unknown driver name provided, detecting appropriate driver", "name", driverName)
+		// Allow the user to define the driver. It may not work, but they're the boss
+		attempt_vmrest := true
+
+		switch driverName {
+		case "simple":
+			c.logger.Warn("creating simple driver via user request")
+			drv, err = driver.NewSimpleDriver(nil, b, c.logger)
+			attempt_vmrest = false
+
+		case "advanced":
+			c.logger.Warn("creating advanced driver via user request")
+			drv, err = driver.NewAdvancedDriver(nil, b, c.logger)
+			attempt_vmrest = false
+
+		default:
+			if driverName != "" {
+				c.logger.Warn("unknown driver name provided, detecting appropriate driver", "name", driverName)
+			}
+			drv, err = driver.CreateDriver(nil, b, c.logger)
 		}
-		drv, err = driver.CreateDriver(nil, b, c.logger)
-	}
-	if err != nil {
-		c.logger.Error("driver setup failure", "error", err)
-		return nil, errors.New("failed to setup VMWare desktop utility driver - " + err.Error())
-	}
 
-	// Now that we are setup, we can attempt to upgrade the driver to the
-	// vmrest driver if possible or requested
-	if attempt_vmrest {
-		c.logger.Info("attempting to upgrade to vmrest driver")
-		drv, err = driver.NewVmrestDriver(context.Background(), drv, c.logger)
 		if err != nil {
-			c.logger.Error("failed to upgrade to vmrest driver", "error", err)
-			return
+			c.logger.Error("driver setup failure", "error", err)
+			return nil, errors.New("failed to setup VMWare desktop utility driver - " + err.Error())
 		}
+
+		// Now that we are setup, we can attempt to upgrade the driver to the
+		// vmrest driver if possible or requested
+		if attempt_vmrest {
+			c.logger.Info("attempting to upgrade to vmrest driver")
+
+			if drv, err = driver.NewVmrestDriver(context.Background(), drv, c.logger); err != nil {
+				c.logger.Error("failed to upgrade to vmrest driver", "error", err)
+				return nil, err
+			}
+		}
+
+		if !drv.GetDriver().Validate() {
+			// NOTE: We only log the failure and allow the process to start. This
+			//       lets the plugin communicate with the service, but all requests
+			//       result in an error which includes the validation failure.
+			c.logger.Error("vmware validation failed")
+		}
+
+		if a, err = server.CreateRestApi(bindAddr, bindPort, drv, c.logger); err != nil {
+			c.logger.Debug("utility server setup failure", "error", err)
+			return nil, errors.New("failed to setup VMWare desktop utility API service - " + err.Error())
+		}
+
+		return a, nil
 	}
-
-	if !drv.GetDriver().Validate() {
-		// NOTE: We only log the failure and allow the process to start. This
-		//       lets the plugin communicate with the service, but all requests
-		//       result in an error which includes the validation failure.
-		c.logger.Error("vmware validation failed")
-	}
-
-	a, err = server.CreateRestApi(bindAddr, bindPort, drv, c.logger)
-
-	if err != nil {
-		c.logger.Debug("utility server setup failure", "error", err)
-		return nil, errors.New("failed to setup VMWare desktop utility API service - " + err.Error())
-	}
-
-	return
 }
 
 func (c *RestApiCommand) setup(args []string) (err error) {

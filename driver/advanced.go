@@ -8,13 +8,13 @@ import (
 )
 
 type AdvancedDriver struct {
-	driver      *vagrant_driver.AdvancedDriver
+	vagrant_driver.AdvancedDriver
 	vmwarePaths *utility.VmwarePaths
 	vmrun       service.Vmrun
 }
 
-func (b *AdvancedDriver) GetDriver() vagrant_driver.Driver {
-	return b.driver
+func (d *AdvancedDriver) GetDriver() vagrant_driver.Driver {
+	return &d.AdvancedDriver
 }
 
 func (b *AdvancedDriver) GetVmwarePaths() *utility.VmwarePaths {
@@ -25,14 +25,14 @@ func (b *AdvancedDriver) GetVmrun() service.Vmrun {
 	return b.vmrun
 }
 
-func NewAdvancedDriver(vmxPath *string, b BaseDriver, logger hclog.Logger) (*AdvancedDriver, error) {
-	if driver, err := vagrant_driver.NewAdvancedDriver(vmxPath, b.GetBaseDriver(), logger); err != nil {
+func NewAdvancedDriver(vmxPath *string, b *BaseDriver, logger hclog.Logger) (*AdvancedDriver, error) {
+	if driver, err := vagrant_driver.NewAdvancedDriver(vmxPath, &b.BaseDriver, logger); err != nil {
 		return nil, err
 	} else {
 		driver := &AdvancedDriver{
-			driver:      driver,
-			vmwarePaths: b.GetVmwarePaths(),
-			vmrun:       b.GetVmrun(),
+			AdvancedDriver: *driver,
+			vmwarePaths:    b.GetVmwarePaths(),
+			vmrun:          b.GetVmrun(),
 		}
 
 		return driver, nil

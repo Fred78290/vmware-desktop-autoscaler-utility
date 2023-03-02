@@ -29,25 +29,23 @@ func (r *RegexpHandler) handleVmwarePaths(writ http.ResponseWriter, req *http.Re
 	switch req.Method {
 	case "GET":
 		r.logger.Debug("vmware paths")
-		paths, err := utility.LoadVmwarePaths(r.logger)
-		if err != nil {
-			r.error(writ, err.Error(), 400)
-			return
+		if paths, err := utility.LoadVmwarePaths(r.logger); err != nil {
+			r.error(writ, err.Error(), http.StatusBadRequest)
+		} else {
+			r.respond(writ, paths, http.StatusOK)
 		}
-		r.respond(writ, paths, 200)
 	default:
 		r.notFound(writ)
 	}
 }
 
 func (r *RegexpHandler) getVmwareInfo(writ http.ResponseWriter) {
-	info, err := r.api.Driver.GetDriver().VmwareInfo()
-	if err != nil {
+	if info, err := r.api.Driver.GetDriver().VmwareInfo(); err != nil {
 		r.logger.Debug("vmware info error", "error", err)
-		r.error(writ, err.Error(), 400)
-		return
+		r.error(writ, err.Error(), http.StatusBadRequest)
+	} else {
+		r.logger.Trace("vmware version info", "version", info.Version, "product", info.Product, "type", info.Type, "build", info.Build)
+		r.respond(writ, info, http.StatusOK)
+
 	}
-	r.logger.Trace("vmware version info", "version", info.Version, "product", info.Product,
-		"type", info.Type, "build", info.Build)
-	r.respond(writ, info, 200)
 }

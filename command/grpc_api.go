@@ -11,7 +11,7 @@ import (
 	"github.com/mitchellh/cli"
 )
 
-const DEFAULT_GRPCAPI_ADDRESS = "tcp://0.0.0.0:5323"
+const DEFAULT_GRPCAPI_ADDRESS = "tcp://0.0.0.0:5322"
 
 // Command for starting the GRPC API
 type GrpcApiCommand struct {

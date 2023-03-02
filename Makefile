@@ -58,7 +58,8 @@ build-in-docker: $(addprefix build-in-docker-arch-,$(ALL_ARCH))
 build-in-docker-arch-%: clean-arch-% docker-builder
 	docker run --rm -v `pwd`:/gopath/src/github.com/Fred78290/vmware-desktop-autoscaler-utility/ vmware-desktop-autoscaler-utility-builder:latest bash \
 		-c 'cd /gopath/src/github.com/Fred78290/vmware-desktop-autoscaler-utility \
-		&& BUILD_TAGS=${BUILD_TAGS} make -e REGISTRY=${REGISTRY} -e TAG=${TAG} -e BUILD_DATE=`date +%Y-%m-%dT%H:%M:%SZ` build-arch-$*'
+		&& BUILD_TAGS=${BUILD_TAGS} make -e GOOS=linux -e REGISTRY=${REGISTRY} -e TAG=${TAG} -e BUILD_DATE=`date +%Y-%m-%dT%H:%M:%SZ` build-arch-$* \
+		&& BUILD_TAGS=${BUILD_TAGS} make -e GOOS=darwin -e REGISTRY=${REGISTRY} -e TAG=${TAG} -e BUILD_DATE=`date +%Y-%m-%dT%H:%M:%SZ` build-arch-$*'
 
 container: $(addprefix container-arch-,$(ALL_ARCH))
 

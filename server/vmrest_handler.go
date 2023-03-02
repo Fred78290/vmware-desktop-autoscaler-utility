@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/driver"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utils"
-	vagrant_driver "github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/driver"
 )
 
 type Error struct {
@@ -28,7 +28,6 @@ var hopHeaders = []string{
 	"Keep-Alive",
 	"Proxy-Authenticate",
 	"Proxy-Authorization",
-	"Te", // canonicalized version of "TE"
 	"Trailers",
 	"Transfer-Encoding",
 	"Upgrade",
@@ -82,38 +81,49 @@ func appendHostToXForwardHeader(header http.Header, host string) {
 func (r *RegexpHandler) handleVmrestProxy(wr http.ResponseWriter, req *http.Request) {
 
 	r.netLock.Lock()
+
 	defer r.netLock.Unlock()
 
+	httperror := func(code int, err error) {
+		wr.Header().Set("Content-Type", driver.VMREST_CONTENT_TYPE)
+
+		msg := utils.ToJSON(map[string]interface{}{
+			"code":    code,
+			"message": err.Error(),
+		})
+
+		http.Error(wr, msg, code)
+		r.logger.Error("ServeHTTP: %v", err)
+	}
+
+	forwardResponse := func(resp *http.Response) {
+		defer resp.Body.Close()
+
+		delHopHeaders(resp.Header)
+
+		copyHeader(wr.Header(), resp.Header)
+
+		wr.WriteHeader(resp.StatusCode)
+		io.Copy(wr, resp.Body)
+	}
+
 	if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
-		msg := "unsupported protocal scheme " + req.URL.Scheme
-
-		http.Error(wr, msg, http.StatusBadRequest)
-
-		r.logger.Error(msg)
+		httperror(http.StatusBadRequest, fmt.Errorf("unsupported protocal scheme "+req.URL.Scheme))
 	} else {
-		var client vagrant_driver.Client
+		var vmrestdriver *driver.VmrestDriver
 		var ok bool
-
-		//http: Request.RequestURI can't be set in client requests.
-		//http://golang.org/src/pkg/net/http/client.go
-		req.RequestURI = ""
 
 		delHopHeaders(req.Header)
 
-		if client, ok = r.api.Driver.GetDriver().(vagrant_driver.Client); !ok {
+		if vmrestdriver, ok = r.api.Driver.(*driver.VmrestDriver); !ok {
 			target := fmt.Sprintf("http://localhost:8697%s", req.URL.Path)
 
 			if newreq, err := http.NewRequest(req.Method, target, req.Body); err != nil {
-				msg := fmt.Sprintf("Unable to create request: %v", err)
-
-				http.Error(wr, msg, http.StatusBadRequest)
-				r.logger.Error(msg)
-
-				return
+				httperror(http.StatusBadRequest, fmt.Errorf("unable to create request: %v", err))
 			} else {
 				copyHeader(req.Header, newreq.Header)
 
-				client = &http.Client{
+				client := &http.Client{
 					Timeout: 30 * time.Second,
 					Transport: &http.Transport{
 						TLSClientConfig: &tls.Config{
@@ -127,23 +137,17 @@ func (r *RegexpHandler) handleVmrestProxy(wr http.ResponseWriter, req *http.Requ
 				}
 
 				req = newreq
+
+				if resp, err := client.Do(req); err != nil {
+					httperror(http.StatusInternalServerError, err)
+				} else {
+					forwardResponse(resp)
+				}
 			}
-
-		}
-
-		if resp, err := client.Do(req); err != nil {
-			http.Error(wr, "Server Error", http.StatusInternalServerError)
-
-			r.logger.Error("ServeHTTP: %v", err)
+		} else if resp, err := vmrestdriver.Request(req.Method, req.URL.Path, req.Body); err == nil {
+			forwardResponse(resp)
 		} else {
-			defer resp.Body.Close()
-
-			delHopHeaders(resp.Header)
-
-			copyHeader(wr.Header(), resp.Header)
-
-			wr.WriteHeader(resp.StatusCode)
-			io.Copy(wr, resp.Body)
+			httperror(http.StatusInternalServerError, err)
 		}
 	}
 }
@@ -158,9 +162,9 @@ func (r *RegexpHandler) handleCreateVirtualMachine(wr http.ResponseWriter, req *
 		r.logger.Debug("create vm")
 
 		if done, err := r.vmrun.Delete(params["vmuuid"]); err != nil {
-			r.error(wr, err.Error(), 404)
+			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), 200)
+			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -177,9 +181,9 @@ func (r *RegexpHandler) handleDeleteVirtualMachine(wr http.ResponseWriter, req *
 		r.logger.Debug("vm delete request", "vmuuid", params["vmuuid"])
 
 		if done, err := r.vmrun.Delete(params["vmuuid"]); err != nil {
-			r.error(wr, err.Error(), 404)
+			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), 200)
+			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -196,9 +200,9 @@ func (r *RegexpHandler) handlePowerOnVirtualMachine(wr http.ResponseWriter, req 
 		r.logger.Debug("vm power on", "vmuuid", params["vmuuid"])
 
 		if done, err := r.vmrun.PowerOn(params["vmuuid"]); err != nil {
-			r.error(wr, err.Error(), 404)
+			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), 200)
+			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -215,9 +219,9 @@ func (r *RegexpHandler) handlePowerOffVirtualMachine(wr http.ResponseWriter, req
 		r.logger.Debug("vm power off", "vmuuid", params["vmuuid"])
 
 		if done, err := r.vmrun.PowerOff(params["vmuuid"]); err != nil {
-			r.error(wr, err.Error(), 404)
+			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), 200)
+			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -234,9 +238,9 @@ func (r *RegexpHandler) handleShutdownGuestVirtualMachine(wr http.ResponseWriter
 		r.logger.Debug("vm shutdown", "vmuuid", params["vmuuid"])
 
 		if done, err := r.vmrun.ShutdownGuest(params["vmuuid"]); err != nil {
-			r.error(wr, err.Error(), 404)
+			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), 200)
+			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -253,9 +257,9 @@ func (r *RegexpHandler) handleStatusVirtualMachine(wr http.ResponseWriter, req *
 		r.logger.Debug("vm shutdown", "vmuuid", params["vmuuid"])
 
 		if status, err := r.vmrun.Status(params["vmuuid"]); err != nil {
-			r.error(wr, err.Error(), 404)
+			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponse(status), 200)
+			r.respond(wr, newResponse(status), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -272,9 +276,9 @@ func (r *RegexpHandler) handleWaitForIP(wr http.ResponseWriter, req *http.Reques
 		r.logger.Debug("vm wait for ip", "vmuuid", params["vmuuid"])
 
 		if address, err := r.vmrun.WaitForIP(params["vmuuid"]); err != nil {
-			r.error(wr, err.Error(), 404)
+			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("address", address), 200)
+			r.respond(wr, newResponseWithKeyValue("address", address), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -291,9 +295,9 @@ func (r *RegexpHandler) handleWaitForToolsRunning(wr http.ResponseWriter, req *h
 		r.logger.Debug("vm wait tools running", "vmuuid", params["vmuuid"])
 
 		if running, err := r.vmrun.WaitForToolsRunning(params["vmuuid"]); err != nil {
-			r.error(wr, err.Error(), 404)
+			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("running", utils.BoolToStr(running)), 200)
+			r.respond(wr, newResponseWithKeyValue("running", utils.BoolToStr(running)), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -310,9 +314,9 @@ func (r *RegexpHandler) handleSetAutoStart(wr http.ResponseWriter, req *http.Req
 		r.logger.Debug("vm set autostart", "vmuuid", params["vmuuid"], "autostart", params["autostart"])
 
 		if autostart, err := r.vmrun.SetAutoStart(params["vmuuid"], params["autostart"] == "true"); err != nil {
-			r.error(wr, err.Error(), 404)
+			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("autostart", utils.BoolToStr(autostart)), 200)
+			r.respond(wr, newResponseWithKeyValue("autostart", utils.BoolToStr(autostart)), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -329,9 +333,9 @@ func (r *RegexpHandler) handleVirtualMachineByName(wr http.ResponseWriter, req *
 		r.logger.Debug("vm by name", "name", params["name"])
 
 		if vm, err := r.vmrun.VirtualMachineByName(params["name"]); err != nil {
-			r.error(wr, err.Error(), 404)
+			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponse(vm), 200)
+			r.respond(wr, newResponse(vm), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -348,9 +352,9 @@ func (r *RegexpHandler) handleVirtualMachineByUUID(wr http.ResponseWriter, req *
 		r.logger.Debug("vm by uuid", "vmuuid", params["vmuuid"])
 
 		if vm, err := r.vmrun.VirtualMachineByUUID(params["vmuuid"]); err != nil {
-			r.error(wr, err.Error(), 404)
+			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponse(vm), 200)
+			r.respond(wr, newResponse(vm), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -367,7 +371,7 @@ func (r *RegexpHandler) handleListVirtualMachines(wr http.ResponseWriter, req *h
 		if vms, err := r.vmrun.ListVirtualMachines(); err != nil {
 			r.error(wr, err.Error(), 500)
 		} else {
-			r.respond(wr, newResponse(vms), 200)
+			r.respond(wr, newResponse(vms), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
