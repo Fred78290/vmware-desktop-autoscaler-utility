@@ -4,11 +4,9 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/version"
 	"github.com/mitchellh/cli"
 )
-
-var phVersion = "v0.0.0-unset"
-var phBuildDate = ""
 
 // Command to display version
 type VersionCommand struct {
@@ -17,20 +15,16 @@ type VersionCommand struct {
 
 func BuildVersionCommand(name string, ui cli.Ui) cli.CommandFactory {
 	return func() (cli.Command, error) {
-		flags := flag.NewFlagSet("api", flag.ContinueOnError)
+		flags := flag.NewFlagSet("version", flag.ContinueOnError)
 		data := make(map[string]interface{})
 		setDefaultFlags(flags, data)
-
-		data["address"] = flags.String("address", DEFAULT_GRPCAPI_ADDRESS, "Address for Grpc to listen")
-		data["driver"] = flags.String("driver", "", "Driver to use (simple, advanced, or vmrest)")
-		data["license_override"] = flags.String("license-override", "", "Override VMware license detection (standard or professional)")
 
 		return &VersionCommand{
 			Command: Command{
 				DefaultConfig: &Config{},
 				Name:          name,
 				Flags:         flags,
-				HelpText:      name + " grpc",
+				HelpText:      name + " version",
 				SynopsisText:  "Get VMware desktop Utility version",
 				UI:            ui,
 				flagdata:      data,
@@ -48,7 +42,7 @@ func (c *VersionCommand) Run(args []string) int {
 		return exitCode
 	}
 
-	c.UI.Info(fmt.Sprintf("The current version is:%s, build at:%s", phVersion, phBuildDate))
+	c.UI.Info(fmt.Sprintf("The current version is:%s, build at:%s", version.VERSION, version.BUILD_DATE))
 
 	return 0
 }

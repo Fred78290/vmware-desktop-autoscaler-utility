@@ -1,11 +1,16 @@
 package driver
 
 import (
-	"github.com/Fred78290/vmware-desktop-autoscaler-utility/service"
+	"net/url"
+	"time"
 
+	"github.com/Fred78290/vmrest-go-client/client"
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/service"
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/settings"
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utils"
 	"github.com/hashicorp/go-hclog"
 	vagrant_driver "github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/driver"
-	"github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/settings"
+	vagrant_settings "github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/settings"
 	"github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/utility"
 )
 
@@ -15,18 +20,35 @@ type Driver interface {
 	GetDriver() vagrant_driver.Driver
 	GetVmwarePaths() *utility.VmwarePaths
 	GetVmrun() service.Vmrun
+	GetVMRestApiClient() *client.APIClient
+}
+
+type ExtendedDriver struct {
+	vmwarePaths *utility.VmwarePaths
+	vmrun       service.Vmrun
+	client      *client.APIClient
 }
 
 type BaseDriver struct {
 	vagrant_driver.BaseDriver
-	vmwarePaths *utility.VmwarePaths
-	vmrun       service.Vmrun
+	ExtendedDriver
 }
 
 type driverImpl struct {
-	driver      vagrant_driver.Driver
-	vmwarePaths *utility.VmwarePaths
-	vmrun       service.Vmrun
+	driver vagrant_driver.Driver
+	ExtendedDriver
+}
+
+func (d *ExtendedDriver) GetVMRestApiClient() *client.APIClient {
+	return d.client
+}
+
+func (d *ExtendedDriver) GetVmwarePaths() *utility.VmwarePaths {
+	return d.vmwarePaths
+}
+
+func (d *ExtendedDriver) GetVmrun() service.Vmrun {
+	return d.vmrun
 }
 
 func (d *driverImpl) GetDriver() vagrant_driver.Driver {
@@ -89,7 +111,7 @@ func (d *driverImpl) ReserveDhcpAddress(slot int, mac, ip string) error {
 	return d.driver.ReserveDhcpAddress(slot, mac, ip)
 }
 
-func (d *driverImpl) Settings() *settings.Settings {
+func (d *driverImpl) Settings() *vagrant_settings.Settings {
 	return d.driver.Settings()
 }
 
@@ -133,41 +155,102 @@ func (d *driverImpl) GetVmrun() service.Vmrun {
 	return d.vmrun
 }
 
-func (d *BaseDriver) GetVmwarePaths() *utility.VmwarePaths {
-	return d.vmwarePaths
-}
-
-func (d *BaseDriver) GetVmrun() service.Vmrun {
-	return d.vmrun
-}
-
 func CreateDriver(vmxPath *string, b *BaseDriver, logger hclog.Logger) (Driver, error) {
 	if driver, err := vagrant_driver.CreateDriver(vmxPath, &b.BaseDriver, logger); err != nil {
 		return nil, err
 	} else {
-		driver := &driverImpl{
-			driver:      driver,
-			vmwarePaths: b.GetVmwarePaths(),
-			vmrun:       b.GetVmrun(),
-		}
+		var result Driver
 
-		return driver, nil
+		if simple, ok := driver.(*vagrant_driver.SimpleDriver); ok {
+			result = &SimpleDriver{
+				SimpleDriver: *simple,
+				ExtendedDriver: ExtendedDriver{
+					vmwarePaths: b.GetVmwarePaths(),
+					vmrun:       b.GetVmrun(),
+					client:      b.GetVMRestApiClient(),
+				},
+			}
+		} else if advanced, ok := driver.(*vagrant_driver.AdvancedDriver); ok {
+			result = &AdvancedDriver{
+				AdvancedDriver: *advanced,
+				ExtendedDriver: ExtendedDriver{
+					vmwarePaths: b.GetVmwarePaths(),
+					vmrun:       b.GetVmrun(),
+					client:      b.GetVMRestApiClient(),
+				},
+			}
+		} else {
+			result = &driverImpl{
+				driver: driver,
+				ExtendedDriver: ExtendedDriver{
+					vmwarePaths: b.GetVmwarePaths(),
+					vmrun:       b.GetVmrun(),
+					client:      b.GetVMRestApiClient(),
+				},
+			}
+		}
+		return result, nil
 	}
 }
 
-func NewBaseDriver(vmxPath *string, licenseOverride string, logger hclog.Logger) (*BaseDriver, error) {
-	if baseDriver, err := vagrant_driver.NewBaseDriver(vmxPath, licenseOverride, logger); err != nil {
+func NewVMRestClient(c *settings.CommonConfig) (*client.APIClient, error) {
+	var configuration *client.Configuration
+
+	if c.VMRestURL != "" {
+		if u, err := url.Parse(c.VMRestURL); err != nil {
+			return nil, err
+		} else {
+			var username string
+			var password string
+			var set bool
+
+			if password, set = u.User.Password(); set {
+				username = u.User.Username()
+			} else {
+				password = ""
+			}
+
+			u.User = nil
+
+			configuration = &client.Configuration{
+				Endpoint:    u.String(),
+				UserName:    username,
+				Password:    password,
+				UserAgent:   utils.UserAgent(),
+				Timeout:     c.Timeout / time.Second,
+				UnsecureTLS: true,
+			}
+
+		}
+	} else {
+		configuration = &client.Configuration{
+			Endpoint:    "http://127.0.0.1:8697",
+			UserAgent:   utils.UserAgent(),
+			UnsecureTLS: true,
+		}
+	}
+
+	return client.NewAPIClient(configuration)
+}
+
+func NewBaseDriver(vmxPath *string, c *settings.CommonConfig, logger hclog.Logger) (*BaseDriver, error) {
+	if baseDriver, err := vagrant_driver.NewBaseDriver(vmxPath, c.LicenseOverride, logger); err != nil {
 		return nil, err
 	} else if paths, err := utility.LoadVmwarePaths(logger); err != nil {
 		return nil, err
-	} else if vmrun, err := service.NewVmrun(paths.Vmrun, logger); err != nil {
+	} else if vmrun, err := service.NewVmrun(c, paths.Vmrun, logger); err != nil {
+		return nil, err
+	} else if client, err := NewVMRestClient(c); err != nil {
 		return nil, err
 	} else {
 
 		driver := &BaseDriver{
-			BaseDriver:  *baseDriver,
-			vmwarePaths: paths,
-			vmrun:       vmrun,
+			BaseDriver: *baseDriver,
+			ExtendedDriver: ExtendedDriver{
+				vmwarePaths: paths,
+				vmrun:       vmrun,
+				client:      client,
+			},
 		}
 
 		return driver, nil

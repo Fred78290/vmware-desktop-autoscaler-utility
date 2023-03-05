@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utility"
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/mitchellh/cli"
 	"golang.org/x/sys/windows/svc"
@@ -30,9 +31,12 @@ func BuildServiceRunCommand(name string, ui cli.Ui) cli.CommandFactory {
 		data := make(map[string]interface{})
 		setDefaultFlags(flags, data)
 
+		data["listen"] = flags.String("listen", DEFAULT_RESTAPI_ADDRESS, "Address for API to listen")
 		data["port"] = flags.Int64("port", DEFAULT_RESTAPI_PORT, "Port for API to listen")
 		data["driver"] = flags.String("driver", "", "Driver to use (simple or advanced)")
 		data["license_override"] = flags.String("license-override", "", "Override VMware license detection (standard or professional)")
+		data["timeout"] = flags.String("timeout", "120s", "Timeout for operation")
+		data["vmfolder"] = flags.String("vmfolder", utility.VMFolder(), "Location for vm")
 
 		return &ServiceRunCommand{
 			RestApiCommand: RestApiCommand{
@@ -147,11 +151,13 @@ func (c *ServiceRunCommand) setup(args []string) (err error) {
 		rc = *c.DefaultConfig.configFile.RestApiConfig
 	}
 
-	c.Config.Address = c.getConfigValue("address", rc.Paddress)
-	c.Config.Port = c.getConfigInt64("port", rc.Pport)
-	c.Config.Driver = c.getConfigValue("driver", rc.Pdriver)
-	c.Config.LicenseOverride = c.getConfigValue("license_override", rc.PlicenseOverride)
+	c.Config.VMRestURL = c.GetConfigValue("vmrest", rc.Pvmrest)
+	c.Config.Listen = c.GetConfigValue("listen", rc.Plisten)
+	c.Config.Port = c.GetConfigInt64("port", rc.Pport)
+	c.Config.Driver = c.GetConfigValue("driver", rc.Pdriver)
+	c.Config.LicenseOverride = c.GetConfigValue("license_override", rc.PlicenseOverride)
 	c.Config.LogDisplay = c.DefaultConfig.LogFile != ""
+	c.Config.Timeout = c.GetConfigDuration("timeout", rc.Ptimeout)
 
 	return
 }

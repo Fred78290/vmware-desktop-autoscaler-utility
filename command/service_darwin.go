@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/service"
-	"github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/utility"
+	vagrant_utility "github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/utility"
 )
 
 // Expected variables:
@@ -98,7 +98,7 @@ const SERVICE_CONFIGURATION_FILE = `/Library/Application Support/vmware-desktop-
 const SERVICE_LOG_FILE = `/Library/Application Support/vmware-desktop-autoscaler-utility/service.log`
 
 func (c *ServiceInstallCommand) install() error {
-	if utility.FileExists(LAUNCHD_JOB_PATH) {
+	if vagrant_utility.FileExists(LAUNCHD_JOB_PATH) {
 		return errors.New("service is already installed")
 	}
 	exePath, err := os.Executable()
@@ -163,7 +163,7 @@ func (c *ServiceInstallCommand) print() error {
 }
 
 func (c *ServiceUninstallCommand) uninstall() error {
-	if !utility.FileExists(LAUNCHD_JOB_PATH) {
+	if !vagrant_utility.FileExists(LAUNCHD_JOB_PATH) {
 		c.logger.Warn("service is not currently installed")
 		return nil
 	}

@@ -9,6 +9,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2/hclsimple"
@@ -252,6 +253,25 @@ func (c *Command) GetConfigInt64(name string, current *int64) int64 {
 	if current != nil {
 		return *current // config file set value
 	}
+	return dval // default value
+}
+
+func (c *Command) GetConfigDuration(name string, current *time.Duration) time.Duration {
+	dval := *(c.flagdata[name].(*time.Duration))
+	if !c.isDefaultValue(name) {
+		return dval // cli set value
+	}
+	eval, ok := os.LookupEnv(c.EnvName(name))
+	if ok {
+		i, err := time.ParseDuration(eval)
+		if err == nil {
+			return i // env var set value
+		}
+	}
+	if current != nil {
+		return *current // config file set value
+	}
+
 	return dval // default value
 }
 

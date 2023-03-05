@@ -8,6 +8,8 @@ import (
 
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/driver"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/server"
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/settings"
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utility"
 	"github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/util"
 	"github.com/mitchellh/cli"
 )
@@ -24,16 +26,7 @@ type RestApiCommand struct {
 }
 
 type RestApiConfig struct {
-	Address         string
-	Port            int64
-	Driver          string
-	LicenseOverride string
-	LogDisplay      bool
-
-	Paddress         *string `hcl:"address"`
-	Pport            *int64  `hcl:"port"`
-	Pdriver          *string `hcl:"driver"`
-	PlicenseOverride *string `hcl:"license_override"`
+	settings.CommonConfig
 }
 
 func BuildRestApiCommand(name string, ui cli.Ui) cli.CommandFactory {
@@ -42,10 +35,12 @@ func BuildRestApiCommand(name string, ui cli.Ui) cli.CommandFactory {
 		data := make(map[string]interface{})
 		setDefaultFlags(flags, data)
 
-		data["address"] = flags.String("address", DEFAULT_RESTAPI_ADDRESS, "Address for API to listen")
+		data["listen"] = flags.String("listen", DEFAULT_RESTAPI_ADDRESS, "Address for API to listen")
 		data["port"] = flags.Int64("port", DEFAULT_RESTAPI_PORT, "Port for API to listen")
 		data["driver"] = flags.String("driver", "", "Driver to use (simple, advanced, or vmrest)")
 		data["license_override"] = flags.String("license-override", "", "Override VMware license detection (standard or professional)")
+		data["timeout"] = flags.String("timeout", "120s", "Timeout for operation")
+		data["vmfolder"] = flags.String("vmfolder", utility.VMFolder(), "Location for vm")
 
 		return &RestApiCommand{
 			Command: Command{
@@ -114,11 +109,11 @@ func (c *RestApiCommand) Run(args []string) int {
 }
 
 func (c *RestApiCommand) buildRestApi(driverName string, port int64) (*server.Api, error) {
-	bindAddr := c.Config.Address
+	bindAddr := c.Config.Listen
 	bindPort := int(port)
 
 	// Start with building the base driver
-	if b, err := driver.NewBaseDriver(nil, c.Config.LicenseOverride, c.logger); err != nil {
+	if b, err := driver.NewBaseDriver(nil, &c.Config.CommonConfig, c.logger); err != nil {
 		c.logger.Error("base driver setup failure", "error", err)
 		return nil, err
 	} else {
@@ -156,7 +151,7 @@ func (c *RestApiCommand) buildRestApi(driverName string, port int64) (*server.Ap
 		if attempt_vmrest {
 			c.logger.Info("attempting to upgrade to vmrest driver")
 
-			if drv, err = driver.NewVmrestDriver(context.Background(), drv, c.logger); err != nil {
+			if drv, err = driver.NewVmrestDriver(context.Background(), &c.Config.CommonConfig, drv, c.logger); err != nil {
 				c.logger.Error("failed to upgrade to vmrest driver", "error", err)
 				return nil, err
 			}
@@ -190,7 +185,9 @@ func (c *RestApiCommand) setup(args []string) (err error) {
 		rc = *c.DefaultConfig.configFile.RestApiConfig
 	}
 
-	c.Config.Address = c.GetConfigValue("address", rc.Paddress)
+	c.Config.Listen = c.GetConfigValue("listen", rc.Plisten)
+	c.Config.Timeout = c.GetConfigDuration("timeout", rc.Ptimeout)
+	c.Config.VMFolder = c.GetConfigValue("vmfolder", rc.Pvmfolder)
 	c.Config.Port = c.GetConfigInt64("port", rc.Pport)
 	c.Config.Driver = c.GetConfigValue("driver", rc.Pdriver)
 	c.Config.LicenseOverride = c.GetConfigValue("license_override", rc.PlicenseOverride)

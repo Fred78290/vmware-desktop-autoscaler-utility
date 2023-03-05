@@ -23,11 +23,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Fred78290/vmware-desktop-autoscaler-utility/service"
+	apiclient "github.com/Fred78290/vmrest-go-client/client"
+
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/settings"
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utils"
 	hclog "github.com/hashicorp/go-hclog"
 
 	"github.com/hashicorp/go-retryablehttp"
-	"github.com/hashicorp/go-version"
+	vagrant_version "github.com/hashicorp/go-version"
 	vagrant_driver "github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/driver"
 	"github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/util"
 	"github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/utility"
@@ -42,8 +45,7 @@ type Client interface {
 
 type VmrestDriver struct {
 	vagrant_driver.BaseDriver
-	vmwarePaths *utility.VmwarePaths
-	vmrun       service.Vmrun
+	ExtendedDriver
 	client      Client
 	ctx         context.Context
 	isBigSurMin bool
@@ -83,14 +85,6 @@ const VMREST_KEEPALIVE_SECONDS = 300
 const VMWARE_NETDEV_PREFIX = "vmnet"
 const VAGRANT_NETDEV_PREFIX = "vgtnet"
 const APIPA_CIDR = "169.254.0.0/16"
-
-func (b *VmrestDriver) GetVmwarePaths() *utility.VmwarePaths {
-	return b.vmwarePaths
-}
-
-func (b *VmrestDriver) GetVmrun() service.Vmrun {
-	return b.vmrun
-}
 
 func (v *vmrest) Init() error {
 	var err error
@@ -174,10 +168,10 @@ func (v *vmrest) Cleanup() {
 func (v *vmrest) Active() (url string) {
 	v.activity <- struct{}{}
 
-	return v.buildURL()
+	return v.URL()
 }
 
-func (v *vmrest) buildURL() string {
+func (v *vmrest) URL() string {
 	return fmt.Sprintf(VMREST_URL, v.port)
 }
 
@@ -187,6 +181,14 @@ func (v *vmrest) Username() string {
 
 func (v *vmrest) Password() string {
 	return v.password
+}
+
+func (v *vmrest) Port() string {
+	return v.password
+}
+
+func (v *vmrest) UserAgent() string {
+	return utils.UserAgent()
 }
 
 func (v *vmrest) Runner() {
@@ -264,12 +266,12 @@ func (v *vmrest) Runner() {
 				v.logger.Debug("process has been started")
 			}
 
-		case <-time.After(VMREST_KEEPALIVE_SECONDS * time.Second):
-			if v.command != nil {
-				v.logger.Debug("halting running process")
-				v.command.Process.Kill()
-			}
-
+			/*		case <-time.After(VMREST_KEEPALIVE_SECONDS * time.Second):
+					if v.command != nil {
+						v.logger.Debug("halting running process")
+						v.command.Process.Kill()
+					}
+			*/
 		case <-v.ctx.Done():
 			v.logger.Warn("halting due to context done")
 			if v.command != nil {
@@ -434,12 +436,12 @@ func (v *vmrest) validate() error {
 	} else {
 		v.logger.Trace("detected vmrest version", "version", m["version"])
 
-		if constraint, err := version.NewConstraint(VMREST_VERSION_CONSTRAINT); err != nil {
+		if constraint, err := vagrant_version.NewConstraint(VMREST_VERSION_CONSTRAINT); err != nil {
 			v.logger.Warn("failed to parse vmrest constraint", "constraint", VMREST_VERSION_CONSTRAINT, "error", err)
 
 			return errors.New("failed to setup vmrest constraint for version check")
 
-		} else if checkV, err := version.NewVersion(m["version"]); err != nil {
+		} else if checkV, err := vagrant_version.NewVersion(m["version"]); err != nil {
 			v.logger.Warn("failed to parse vmrest version for check", "version", m["version"], "error", err)
 
 			return errors.New("failed to parse vmrest version for validation check")
@@ -468,8 +470,9 @@ func NewVmrest(ctx context.Context, vmrestPath string, logger hclog.Logger) (*vm
 	return v, v.Init()
 }
 
-func NewVmrestDriver(ctx context.Context, f Driver, logger hclog.Logger) (Driver, error) {
+func NewVmrestDriver(ctx context.Context, c *settings.CommonConfig, f Driver, logger hclog.Logger) (Driver, error) {
 	logger = logger.Named("vmrest")
+
 	if i, err := f.VmwareInfo(); err != nil {
 
 		logger.Warn("failed to get vmware info", "error", err)
@@ -505,6 +508,14 @@ func NewVmrestDriver(ctx context.Context, f Driver, logger hclog.Logger) (Driver
 				}
 			}
 
+			configuration := &apiclient.Configuration{
+				Endpoint:  v.URL(),
+				UserAgent: v.UserAgent(),
+				UserName:  v.Username(),
+				Password:  v.Password(),
+				Timeout:   c.Timeout / time.Second,
+			}
+
 			d := &VmrestDriver{
 				BaseDriver:  *b,
 				client:      retryablehttp.NewClient().StandardClient(),
@@ -514,13 +525,17 @@ func NewVmrestDriver(ctx context.Context, f Driver, logger hclog.Logger) (Driver
 				isBigSurMin: utility.IsBigSurMin(),
 				logger:      logger,
 			}
-
 			// License detection is not always correct so we need to validate
 			// that networking functionality is available via the vmrest process
 			logger.Debug("validating that vmrest service provides networking functionality")
 
 			if _, err = d.Vmnets(); err != nil {
 				logger.Error("vmrest driver failed to access networking functions, using fallback", "status", "invalid", "error", err)
+				return f, nil
+			}
+
+			if d.ExtendedDriver.client, err = apiclient.NewAPIClient(configuration); err != nil {
+				logger.Error("vmrest api client failed", "status", "invalid", "error", err)
 				return f, nil
 			}
 
@@ -859,7 +874,7 @@ func (v *VmrestDriver) Request(method, path string, body io.Reader) (*http.Respo
 	} else {
 		req.SetBasicAuth(v.vmrest.Username(), v.vmrest.Password())
 		req.Header.Add("Accept", VMREST_CONTENT_TYPE)
-
+		req.Header.Add("User-Agent", v.vmrest.UserAgent())
 		if body != nil {
 			req.Header.Add("Content-Type", VMREST_CONTENT_TYPE)
 		}

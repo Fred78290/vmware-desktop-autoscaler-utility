@@ -16,8 +16,9 @@
 			},
 			"args": [
 				"grpc",
-				"--address=unix:/tmp/vmware-desktop-utility.sock",
-				"--address=tcp:127.0.0.1:5622"
+				"--listen=unix:/tmp/vmware-desktop-utility.sock",
+				"--listen=tcp:127.0.0.1:5622",
+				"--vmrest=https://fboltz:${env:GOVC_PASSWORD}@localhost.aldunelabs.com:8697"
 			]
 		}
 	]

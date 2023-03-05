@@ -7,11 +7,14 @@ import (
 
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/driver"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/server"
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/settings"
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utility"
 	"github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/util"
 	"github.com/mitchellh/cli"
 )
 
 const DEFAULT_GRPCAPI_ADDRESS = "tcp://0.0.0.0:5322"
+const DEFAULT_VMREST_ADDRESS = "http://127.0.0.1:8697"
 
 // Command for starting the GRPC API
 type GrpcApiCommand struct {
@@ -20,25 +23,21 @@ type GrpcApiCommand struct {
 }
 
 type GrpcApiConfig struct {
-	Address         string
-	Driver          string
-	LicenseOverride string
-	LogDisplay      bool
-
-	Paddress         *string `hcl:"address"`
-	Pdriver          *string `hcl:"driver"`
-	PlicenseOverride *string `hcl:"license_override"`
+	settings.CommonConfig
 }
 
 func BuildGrpcApiCommand(name string, ui cli.Ui) cli.CommandFactory {
 	return func() (cli.Command, error) {
-		flags := flag.NewFlagSet("api", flag.ContinueOnError)
+		flags := flag.NewFlagSet("grpc", flag.ContinueOnError)
 		data := make(map[string]interface{})
 		setDefaultFlags(flags, data)
 
-		data["address"] = flags.String("address", DEFAULT_GRPCAPI_ADDRESS, "Address for Grpc to listen")
+		data["listen"] = flags.String("listen", DEFAULT_GRPCAPI_ADDRESS, "Address for Grpc to listen")
 		data["driver"] = flags.String("driver", "", "Driver to use (simple, advanced, or vmrest)")
+		data["vmrest"] = flags.String("vmrest", DEFAULT_VMREST_ADDRESS, "Address for external vmrest api when driver is not vmrest")
 		data["license_override"] = flags.String("license-override", "", "Override VMware license detection (standard or professional)")
+		data["timeout"] = flags.String("timeout", "120s", "Timeout for operation")
+		data["vmfolder"] = flags.String("vmfolder", utility.VMFolder(), "Location for vm")
 
 		return &GrpcApiCommand{
 			Command: Command{
@@ -102,10 +101,10 @@ func (c *GrpcApiCommand) Run(args []string) int {
 }
 
 func (c *GrpcApiCommand) buildGrpc(driverName string) (a *server.Grpc, err error) {
-	bindAddr := c.Config.Address
+	bindAddr := c.Config.Listen
 
 	// Start with building the base driver
-	b, err := driver.NewBaseDriver(nil, c.Config.LicenseOverride, c.logger)
+	b, err := driver.NewBaseDriver(nil, &c.Config.CommonConfig, c.logger)
 	if err != nil {
 		c.logger.Error("base driver setup failure", "error", err)
 		return
@@ -140,7 +139,7 @@ func (c *GrpcApiCommand) buildGrpc(driverName string) (a *server.Grpc, err error
 	// vmrest driver if possible or requested
 	if attempt_vmrest {
 		c.logger.Info("attempting to upgrade to vmrest driver")
-		if drv, err = driver.NewVmrestDriver(context.Background(), drv, c.logger); err != nil {
+		if drv, err = driver.NewVmrestDriver(context.Background(), &c.Config.CommonConfig, drv, c.logger); err != nil {
 			c.logger.Error("failed to upgrade to vmrest driver", "error", err)
 			return
 		}
@@ -172,7 +171,10 @@ func (c *GrpcApiCommand) setup(args []string) (err error) {
 			rc = *c.DefaultConfig.configFile.GrpcApiConfig
 		}
 
-		c.Config.Address = c.GetConfigValue("address", rc.Paddress)
+		c.Config.Listen = c.GetConfigValue("listen", rc.Plisten)
+		c.Config.Timeout = c.GetConfigDuration("timeout", rc.Ptimeout)
+		c.Config.VMFolder = c.GetConfigValue("vmfolder", rc.Pvmfolder)
+		c.Config.VMRestURL = c.GetConfigValue("vmrest", rc.Pvmrest)
 		c.Config.Driver = c.GetConfigValue("driver", rc.Pdriver)
 		c.Config.LicenseOverride = c.GetConfigValue("license_override", rc.PlicenseOverride)
 		c.Config.LogDisplay = c.DefaultConfig.LogFile != ""
