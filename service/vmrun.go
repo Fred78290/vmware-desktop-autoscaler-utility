@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -82,14 +83,15 @@ type Vmrun interface {
 }
 
 type VmrunExe struct {
-	exePath     string
-	logger      hclog.Logger
-	timeout     time.Duration
-	vmfolder    string
-	cachebyuuid map[string]*VirtualMachine
-	cachebyvmx  map[string]*VirtualMachine
-	cachebyname map[string]*VirtualMachine
-	client      *client.APIClient
+	exeVdiskManager string
+	exePath         string
+	logger          hclog.Logger
+	timeout         time.Duration
+	vmfolder        string
+	cachebyuuid     map[string]*VirtualMachine
+	cachebyvmx      map[string]*VirtualMachine
+	cachebyname     map[string]*VirtualMachine
+	client          *client.APIClient
 }
 
 type VirtualMachine struct {
@@ -102,21 +104,26 @@ type VirtualMachine struct {
 	Address string
 }
 
-func NewVmrun(c *settings.CommonConfig, path string, logger hclog.Logger) (Vmrun, error) {
-	if !vagrant_utility.RootOwned(path, true) {
+func NewVmrun(c *settings.CommonConfig, exePath, exeVdiskManager string, logger hclog.Logger) (Vmrun, error) {
+	if !vagrant_utility.RootOwned(exePath, true) {
 		return nil, errors.New("failed to locate valid vmrun executable")
+	}
+
+	if !vagrant_utility.RootOwned(exeVdiskManager, true) {
+		return nil, errors.New("failed to locate valid vmware-vdiskmanager executable")
 	}
 
 	logger = logger.Named("vmrun")
 
 	return &VmrunExe{
-		exePath:     path,
-		logger:      logger,
-		timeout:     c.Timeout,
-		vmfolder:    c.VMFolder,
-		cachebyuuid: make(map[string]*VirtualMachine),
-		cachebyvmx:  make(map[string]*VirtualMachine),
-		cachebyname: make(map[string]*VirtualMachine),
+		exeVdiskManager: exeVdiskManager,
+		exePath:         exePath,
+		logger:          logger,
+		timeout:         c.Timeout,
+		vmfolder:        c.VMFolder,
+		cachebyuuid:     make(map[string]*VirtualMachine),
+		cachebyvmx:      make(map[string]*VirtualMachine),
+		cachebyname:     make(map[string]*VirtualMachine),
 	}, nil
 }
 
@@ -271,7 +278,38 @@ func (v *VmrunExe) isRunningVm(vmx string) (bool, error) {
 func (v *VmrunExe) createVmPath(name string) (string, error) {
 	vmpath := utility.DirectoryForVirtualMachine(v.vmfolder, name)
 
+	if _, err := os.Stat(vmpath); err == nil {
+		return vmpath, status.Errorf(codes.AlreadyExists, "VMX already exists: %s", vmpath)
+	}
+
 	return vmpath, nil
+}
+
+func (v *VmrunExe) expandDisk(vmxpath string, diskSizeInMb int, vmx map[string]string) error {
+
+	if diskSizeInMb > 0 {
+		for _, disk := range []string{"nvme0:0", "scsi0:0", "sata0:0"} {
+			if utils.StrToBool(vmx[fmt.Sprintf("%s.present", disk)]) {
+				vmdk := path.Join(path.Dir(vmxpath), vmx[fmt.Sprintf("%s.filename", disk)])
+
+				if _, err := os.Stat(vmdk); err != nil {
+					return status.Errorf(codes.AlreadyExists, "VMDK: %s not found", vmdk)
+				}
+
+				cmd := exec.Command(v.exeVdiskManager, "-x", fmt.Sprintf("%dM", diskSizeInMb), vmdk)
+				exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
+
+				if exitCode != 0 {
+					v.logger.Debug("vmware-vdiskmanager failed", "exitcode", exitCode)
+					v.logger.Trace("vmware-vdiskmanager failed", "output", out)
+
+					return status.Errorf(codes.Internal, "failed to expand VMDK: %s to %dM, reason: %s", vmdk, diskSizeInMb, out)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func (v *VmrunExe) clone(template *VirtualMachine, name string) (newpath string, err error) {
@@ -365,6 +403,8 @@ func (v *VmrunExe) Create(request *CreateVirtualMachine) (*VirtualMachine, error
 	} else if vmx, err := v.loadVMX(vmxpath); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "failed to load VMX: %s, reason: %v", vmxpath, err)
 	} else if vmuuid, err := v.prepareVMX(request, vmxpath, vmx); err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "failed to prepare VM: %s, reason: %v", template.Path, err)
+	} else if err = v.expandDisk(vmxpath, request.DiskSizeInMb, vmx); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "failed to prepare VM: %s, reason: %v", template.Path, err)
 	} else {
 		return v.VirtualMachineByUUID(vmuuid)

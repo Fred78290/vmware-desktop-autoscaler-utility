@@ -218,10 +218,12 @@ func (g *Grpc) Create(ctx context.Context, req *api.CreateRequest) (*api.CreateR
 		return &api.CreateResponse{Response: &api.CreateResponse_Result{
 			Result: &api.CreateReply{
 				Machine: &api.VirtualMachine{
-					Uuid:   result.Uuid,
-					Vmx:    result.Path,
-					Vcpus:  req.Vcpus,
-					Memory: req.Memory,
+					Uuid:    result.Uuid,
+					Vmx:     result.Path,
+					Vcpus:   req.Vcpus,
+					Memory:  req.Memory,
+					Powered: result.Powered,
+					Address: result.Address,
 				},
 			},
 		}}, nil
@@ -478,7 +480,7 @@ func (g *Grpc) SetAutoStart(ctx context.Context, req *api.AutoStartRequest) (*ap
 	}
 }
 
-func (g *Grpc) VirtualMachineByName(ctx context.Context, req *api.VirtualMachineRequest) (*api.VirtualMachineByNameResponse, error) {
+func (g *Grpc) VirtualMachineByName(ctx context.Context, req *api.VirtualMachineRequest) (*api.VirtualMachineResponse, error) {
 	g.incrementInflight()
 
 	defer g.decrementInflight()
@@ -488,8 +490,8 @@ func (g *Grpc) VirtualMachineByName(ctx context.Context, req *api.VirtualMachine
 			return nil, err
 		}
 
-		return &api.VirtualMachineByNameResponse{
-			Response: &api.VirtualMachineByNameResponse_Error{
+		return &api.VirtualMachineResponse{
+			Response: &api.VirtualMachineResponse_Error{
 				Error: &api.ClientError{
 					Code:   404,
 					Reason: err.Error(),
@@ -497,21 +499,23 @@ func (g *Grpc) VirtualMachineByName(ctx context.Context, req *api.VirtualMachine
 			},
 		}, nil
 	} else {
-		return &api.VirtualMachineByNameResponse{
-			Response: &api.VirtualMachineByNameResponse_Result{
+		return &api.VirtualMachineResponse{
+			Response: &api.VirtualMachineResponse_Result{
 				Result: &api.VirtualMachine{
-					Uuid:   vm.Uuid,
-					Vmx:    vm.Path,
-					Name:   vm.Name,
-					Vcpus:  int32(vm.Vcpus),
-					Memory: int64(vm.Memory),
+					Uuid:    vm.Uuid,
+					Vmx:     vm.Path,
+					Name:    vm.Name,
+					Vcpus:   int32(vm.Vcpus),
+					Memory:  int64(vm.Memory),
+					Powered: vm.Powered,
+					Address: vm.Address,
 				},
 			},
 		}, nil
 	}
 }
 
-func (g *Grpc) VirtualMachineByUUID(ctx context.Context, req *api.VirtualMachineRequest) (*api.VirtualMachineByNameResponse, error) {
+func (g *Grpc) VirtualMachineByUUID(ctx context.Context, req *api.VirtualMachineRequest) (*api.VirtualMachineResponse, error) {
 	g.incrementInflight()
 
 	defer g.decrementInflight()
@@ -521,8 +525,8 @@ func (g *Grpc) VirtualMachineByUUID(ctx context.Context, req *api.VirtualMachine
 			return nil, err
 		}
 
-		return &api.VirtualMachineByNameResponse{
-			Response: &api.VirtualMachineByNameResponse_Error{
+		return &api.VirtualMachineResponse{
+			Response: &api.VirtualMachineResponse_Error{
 				Error: &api.ClientError{
 					Code:   404,
 					Reason: err.Error(),
@@ -530,14 +534,16 @@ func (g *Grpc) VirtualMachineByUUID(ctx context.Context, req *api.VirtualMachine
 			},
 		}, nil
 	} else {
-		return &api.VirtualMachineByNameResponse{
-			Response: &api.VirtualMachineByNameResponse_Result{
+		return &api.VirtualMachineResponse{
+			Response: &api.VirtualMachineResponse_Result{
 				Result: &api.VirtualMachine{
-					Uuid:   vm.Uuid,
-					Vmx:    vm.Path,
-					Name:   vm.Name,
-					Vcpus:  int32(vm.Vcpus),
-					Memory: int64(vm.Memory),
+					Uuid:    vm.Uuid,
+					Vmx:     vm.Path,
+					Name:    vm.Name,
+					Vcpus:   int32(vm.Vcpus),
+					Memory:  int64(vm.Memory),
+					Powered: vm.Powered,
+					Address: vm.Address,
 				},
 			},
 		}, nil
@@ -567,11 +573,13 @@ func (g *Grpc) ListVirtualMachines(ctx context.Context, req *api.VirtualMachines
 
 		for _, vm := range vms {
 			machines = append(machines, &api.VirtualMachine{
-				Uuid:   vm.Uuid,
-				Name:   vm.Name,
-				Vmx:    vm.Path,
-				Vcpus:  int32(vm.Vcpus),
-				Memory: int64(vm.Memory),
+				Uuid:    vm.Uuid,
+				Name:    vm.Name,
+				Vmx:     vm.Path,
+				Vcpus:   int32(vm.Vcpus),
+				Memory:  int64(vm.Memory),
+				Powered: vm.Powered,
+				Address: vm.Address,
 			})
 		}
 

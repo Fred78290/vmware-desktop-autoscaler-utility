@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/driver"
+
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2/hclsimple"
 	vagrant_utility "github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/command"
@@ -23,6 +25,7 @@ func Commands(name string, ui cli.Ui) (cmds map[string]cli.CommandFactory) {
 	cmds = map[string]cli.CommandFactory{
 		"api":                  BuildRestApiCommand(name, ui),
 		"grpc":                 BuildGrpcApiCommand(name, ui),
+		"api grpc":             BuildBothApiCommand(name, ui),
 		"version":              BuildVersionCommand(name, ui),
 		"certificate generate": BuildCertificateGenerateCommand(name, ui),
 		"service install":      BuildServiceInstallCommand(name, ui),
@@ -42,6 +45,7 @@ type Command struct {
 	HelpText      string
 	SynopsisText  string
 	UI            cli.Ui
+	driver        driver.Driver
 	flagdata      map[string]interface{}
 	logger        hclog.Logger
 }

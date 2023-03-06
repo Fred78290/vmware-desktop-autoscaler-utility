@@ -34,6 +34,8 @@ message VirtualMachine {
 	string vmx = 3;
 	int32 vcpus = 4;
 	int64 memory = 5;
+	string address = 6;
+	bool powered = 7; 
 }
 
 message VirtualMachineRequest {

@@ -162,6 +162,54 @@ func (c *GrpcApiCommand) buildGrpc(driverName string) (a *server.Grpc, err error
 	return
 }
 
+func (c *GrpcApiCommand) SharedRun(args []string, drv driver.Driver) int {
+	bindAddr := c.Config.Listen
+	exitCode := 1
+	err := c.setup(args)
+
+	if err != nil {
+		c.UI.Error("Failed to initialize: " + err.Error())
+	} else if grpc, err := server.CreateGrpc(bindAddr, drv, c.logger); err != nil {
+		if c.Config.LogDisplay {
+			c.logger.Error("api setup failure", "error", err)
+		} else {
+			c.UI.Error("Failed to setup VMWare desktop utility API service - " + err.Error())
+		}
+	} else {
+
+		if c.Config.LogDisplay {
+			c.logger.Info("starting service")
+		} else {
+			c.UI.Info("Starting the VMWare desktop utility API service")
+		}
+
+		if err = grpc.Start(); err != nil {
+			if c.Config.LogDisplay {
+				c.logger.Error("startup failure", "error", err)
+			} else {
+				c.UI.Error("Failed to start the VMWare desktop utility API service - " + err.Error())
+			}
+		} else {
+			exitCode = 0
+
+			util.RegisterShutdownTask(func() {
+				if c.Config.LogDisplay {
+					c.logger.Info("halting serivce")
+				} else {
+					c.UI.Info("Halting the VMWare desktop utility API service")
+				}
+
+				grpc.Stop()
+			})
+
+			<-grpc.HaltedChan
+		}
+
+	}
+
+	return exitCode
+}
+
 func (c *GrpcApiCommand) setup(args []string) (err error) {
 	if err = c.defaultSetup(args); err == nil {
 

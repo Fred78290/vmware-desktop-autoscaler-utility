@@ -24,6 +24,7 @@ type ServiceInstallConfig struct {
 	LicenseOverride string
 	Init            string // used on linux (style)
 	Listen          string
+	Address         string
 	Port            int64
 	RunitDir        string // used on linux
 	Print           bool   // used for init printing
@@ -41,6 +42,7 @@ type ServiceInstallConfig struct {
 	Pinit            *string        `hcl:"init"`      // used on linux (style)
 	PrunitDir        *string        `hcl:"runit_dir"` // used on linux
 	Plisten          *string        `hcl:"listen"`
+	Paddress         *string        `hcl:"address"`
 	Pport            *int64         `hcl:"port"`
 	Ptimeout         *time.Duration `hcl:"timeout"`
 }
@@ -51,6 +53,7 @@ func (s *ServiceInstallConfig) Prepare() {
 	s.Pinit = &s.Init
 	s.PrunitDir = &s.RunitDir
 	s.Plisten = &s.Listen
+	s.Paddress = &s.Address
 	s.Pport = &s.Port
 	s.Ptimeout = &s.Timeout
 	s.Pvmrest = &s.VMRestURL
@@ -148,6 +151,7 @@ func (c *ServiceInstallCommand) setup(args []string) (err error) {
 	}
 
 	c.Config.VMRestURL = c.GetConfigValue("vmrest", sc.Pvmrest)
+	c.Config.Address = c.GetConfigValue("address", sc.Paddress)
 	c.Config.Listen = c.GetConfigValue("listen", sc.Plisten)
 	c.Config.Port = c.GetConfigInt64("port", sc.Pport)
 	c.Config.Driver = c.GetConfigValue("driver", sc.Pdriver)
@@ -190,22 +194,20 @@ func (c *ServiceInstallCommand) writeConfig(fpath string) (cpath string, err err
 
 	config.RestApiConfig = &RestApiConfig{
 		CommonConfig: settings.CommonConfig{
-			Plisten:  &c.Config.Listen,
-			Pport:    &c.Config.Port,
 			Ptimeout: &c.Config.Timeout,
+			Paddress: &c.Config.Address,
+			Pport:    &c.Config.Port,
 		},
 	}
 
 	config.GrpcApiConfig = &GrpcApiConfig{
 		CommonConfig: settings.CommonConfig{
 			Plisten:  &c.Config.Listen,
-			Pport:    &c.Config.Port,
 			Ptimeout: &c.Config.Timeout,
 		},
 	}
 
 	if c.Config.VMRestURL != "" {
-		config.RestApiConfig.Pvmrest = &c.Config.VMRestURL
 		config.GrpcApiConfig.Pvmrest = &c.Config.VMRestURL
 	}
 

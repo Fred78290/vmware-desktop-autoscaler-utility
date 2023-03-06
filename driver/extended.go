@@ -238,7 +238,7 @@ func NewBaseDriver(vmxPath *string, c *settings.CommonConfig, logger hclog.Logge
 		return nil, err
 	} else if paths, err := utility.LoadVmwarePaths(logger); err != nil {
 		return nil, err
-	} else if vmrun, err := service.NewVmrun(c, paths.Vmrun, logger); err != nil {
+	} else if vmrun, err := service.NewVmrun(c, paths.Vmrun, paths.Vdiskmanager, logger); err != nil {
 		return nil, err
 	} else if client, err := NewVMRestClient(c); err != nil {
 		return nil, err

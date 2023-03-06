@@ -35,7 +35,7 @@ func BuildRestApiCommand(name string, ui cli.Ui) cli.CommandFactory {
 		data := make(map[string]interface{})
 		setDefaultFlags(flags, data)
 
-		data["listen"] = flags.String("listen", DEFAULT_RESTAPI_ADDRESS, "Address for API to listen")
+		data["address"] = flags.String("address", DEFAULT_RESTAPI_ADDRESS, "Address for API to listen")
 		data["port"] = flags.Int64("port", DEFAULT_RESTAPI_PORT, "Port for API to listen")
 		data["driver"] = flags.String("driver", "", "Driver to use (simple, advanced, or vmrest)")
 		data["license_override"] = flags.String("license-override", "", "Override VMware license detection (standard or professional)")
@@ -109,7 +109,7 @@ func (c *RestApiCommand) Run(args []string) int {
 }
 
 func (c *RestApiCommand) buildRestApi(driverName string, port int64) (*server.Api, error) {
-	bindAddr := c.Config.Listen
+	bindAddr := c.Config.Address
 	bindPort := int(port)
 
 	// Start with building the base driver
@@ -164,6 +164,8 @@ func (c *RestApiCommand) buildRestApi(driverName string, port int64) (*server.Ap
 			c.logger.Error("vmware validation failed")
 		}
 
+		c.driver = drv
+
 		if a, err = server.CreateRestApi(bindAddr, bindPort, drv, c.logger); err != nil {
 			c.logger.Debug("utility server setup failure", "error", err)
 			return nil, errors.New("failed to setup VMWare desktop utility API service - " + err.Error())
@@ -185,7 +187,7 @@ func (c *RestApiCommand) setup(args []string) (err error) {
 		rc = *c.DefaultConfig.configFile.RestApiConfig
 	}
 
-	c.Config.Listen = c.GetConfigValue("listen", rc.Plisten)
+	c.Config.Address = c.GetConfigValue("address", rc.Paddress)
 	c.Config.Timeout = c.GetConfigDuration("timeout", rc.Ptimeout)
 	c.Config.VMFolder = c.GetConfigValue("vmfolder", rc.Pvmfolder)
 	c.Config.Port = c.GetConfigInt64("port", rc.Pport)
