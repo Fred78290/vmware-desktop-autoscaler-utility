@@ -37,7 +37,7 @@ func BuildServiceRunCommand(name string, ui cli.Ui) cli.CommandFactory {
 		data["vmrest"] = flags.String("vmrest", DEFAULT_VMREST_ADDRESS, "Address for external vmrest api when driver is not vmrest")
 		data["driver"] = flags.String("driver", "", "Driver to use (simple or advanced)")
 		data["license_override"] = flags.String("license-override", "", "Override VMware license detection (standard or professional)")
-		data["timeout"] = flags.String("timeout", "120s", "Timeout for operation")
+		data["timeout"] = flags.Duration("timeout", 120*time.Second, "Timeout for operation")
 		data["vmfolder"] = flags.String("vmfolder", utility.VMFolder(), "Location for vm")
 
 		return &ServiceRunCommand{

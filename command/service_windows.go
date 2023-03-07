@@ -12,7 +12,7 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 )
 
-const WINDOWS_SERVICE_NAME = "VagrantVMware"
+const WINDOWS_SERVICE_NAME = "VMwareAutoscalerUtility"
 
 func (c *ServiceInstallCommand) install() error {
 	exePath, err := os.Executable()

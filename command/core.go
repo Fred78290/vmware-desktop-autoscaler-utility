@@ -25,7 +25,7 @@ func Commands(name string, ui cli.Ui) (cmds map[string]cli.CommandFactory) {
 	cmds = map[string]cli.CommandFactory{
 		"api":                  BuildRestApiCommand(name, ui),
 		"grpc":                 BuildGrpcApiCommand(name, ui),
-		"api grpc":             BuildBothApiCommand(name, ui),
+		"full":                 BuildBothApiCommand(name, ui),
 		"version":              BuildVersionCommand(name, ui),
 		"certificate generate": BuildCertificateGenerateCommand(name, ui),
 		"service install":      BuildServiceInstallCommand(name, ui),

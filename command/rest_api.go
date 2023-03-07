@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"sync"
+	"time"
 
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/driver"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/server"
@@ -39,7 +40,7 @@ func BuildRestApiCommand(name string, ui cli.Ui) cli.CommandFactory {
 		data["port"] = flags.Int64("port", DEFAULT_RESTAPI_PORT, "Port for API to listen")
 		data["driver"] = flags.String("driver", "", "Driver to use (simple, advanced, or vmrest)")
 		data["license_override"] = flags.String("license-override", "", "Override VMware license detection (standard or professional)")
-		data["timeout"] = flags.String("timeout", "120s", "Timeout for operation")
+		data["timeout"] = flags.Duration("timeout", 120*time.Second, "Timeout for operation")
 		data["vmfolder"] = flags.String("vmfolder", utility.VMFolder(), "Location for vm")
 
 		return &RestApiCommand{

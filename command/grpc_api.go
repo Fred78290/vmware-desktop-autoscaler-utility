@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"time"
 
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/driver"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/server"
@@ -13,7 +14,7 @@ import (
 	"github.com/mitchellh/cli"
 )
 
-const DEFAULT_GRPCAPI_ADDRESS = "tcp://0.0.0.0:5322"
+const DEFAULT_GRPCAPI_ADDRESS = "tcp://0.0.0.0:5323"
 const DEFAULT_VMREST_ADDRESS = "http://127.0.0.1:8697"
 
 // Command for starting the GRPC API
@@ -36,7 +37,7 @@ func BuildGrpcApiCommand(name string, ui cli.Ui) cli.CommandFactory {
 		data["driver"] = flags.String("driver", "", "Driver to use (simple, advanced, or vmrest)")
 		data["vmrest"] = flags.String("vmrest", DEFAULT_VMREST_ADDRESS, "Address for external vmrest api when driver is not vmrest")
 		data["license_override"] = flags.String("license-override", "", "Override VMware license detection (standard or professional)")
-		data["timeout"] = flags.String("timeout", "120s", "Timeout for operation")
+		data["timeout"] = flags.Duration("timeout", 120*time.Second, "Timeout for operation")
 		data["vmfolder"] = flags.String("vmfolder", utility.VMFolder(), "Location for vm")
 
 		return &GrpcApiCommand{
@@ -151,6 +152,8 @@ func (c *GrpcApiCommand) buildGrpc(driverName string) (a *server.Grpc, err error
 		//       result in an error which includes the validation failure.
 		c.logger.Error("vmware validation failed")
 	}
+
+	c.driver = drv
 
 	a, err = server.CreateGrpc(bindAddr, drv, c.logger)
 

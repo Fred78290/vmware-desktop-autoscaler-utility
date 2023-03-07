@@ -91,7 +91,7 @@ func BuildServiceInstallCommand(name string, ui cli.Ui) cli.CommandFactory {
 		data["exe_path"] = flags.String("exe-path", "", "Path used for executable (used for print only)")
 		data["config_path"] = flags.String("config-path", "", "Path for configuration file (used for print only)")
 		data["config_write"] = flags.String("config-write", "./service.hcl", "Path to write configuration file (used for print only)")
-		data["timeout"] = flags.String("timeout", "120s", "Timeout for operation")
+		data["timeout"] = flags.Duration("timeout", 120*time.Second, "Timeout for operation")
 		data["vmfolder"] = flags.String("vmfolder", utility.VMFolder(), "Location for vm")
 
 		return &ServiceInstallCommand{

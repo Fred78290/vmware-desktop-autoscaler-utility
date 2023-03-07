@@ -84,7 +84,6 @@ const VMREST_KEEPALIVE_SECONDS = 300
 
 const VMWARE_NETDEV_PREFIX = "vmnet"
 const VAGRANT_NETDEV_PREFIX = "vgtnet"
-const APIPA_CIDR = "169.254.0.0/16"
 
 func (v *vmrest) Init() error {
 	var err error
@@ -508,8 +507,9 @@ func NewVmrestDriver(ctx context.Context, c *settings.CommonConfig, f Driver, lo
 				}
 			}
 
+			url := v.URL()
 			configuration := &apiclient.Configuration{
-				Endpoint:  v.URL(),
+				Endpoint:  url[0 : len(url)-4],
 				UserAgent: v.UserAgent(),
 				UserName:  v.Username(),
 				Password:  v.Password(),
@@ -517,7 +517,11 @@ func NewVmrestDriver(ctx context.Context, c *settings.CommonConfig, f Driver, lo
 			}
 
 			d := &VmrestDriver{
-				BaseDriver:  *b,
+				BaseDriver: *b,
+				ExtendedDriver: ExtendedDriver{
+					vmwarePaths: f.GetVmwarePaths(),
+					vmrun:       f.GetVmrun(),
+				},
 				client:      retryablehttp.NewClient().StandardClient(),
 				ctx:         ctx,
 				fallback:    f,
@@ -538,6 +542,8 @@ func NewVmrestDriver(ctx context.Context, c *settings.CommonConfig, f Driver, lo
 				logger.Error("vmrest api client failed", "status", "invalid", "error", err)
 				return f, nil
 			}
+
+			d.ExtendedDriver.vmrun.SetApiClient(d.ExtendedDriver.client)
 
 			logger.Debug("validation of vmrest service is complete", "status", "valid")
 
