@@ -40,7 +40,7 @@ func BuildBothApiCommand(name string, ui cli.Ui) cli.CommandFactory {
 		data["timeout"] = flags.Duration("timeout", 120*time.Second, "Timeout for operation")
 		data["vmfolder"] = flags.String("vmfolder", utility.VMFolder(), "Location for vm")
 
-		if restCommand, err = BuildRestApiCommand("api", ui)(); err != nil {
+		if restCommand, err = BuildRestApiCommand("api", false, ui)(); err != nil {
 			return nil, err
 		}
 
@@ -73,6 +73,9 @@ func BuildBothApiCommand(name string, ui cli.Ui) cli.CommandFactory {
 
 func (c *BothApiCommand) Run(args []string) (exitCode int) {
 	if exitCode = c.RestCommand.Run(args); exitCode == 0 {
+		c.GrpcCommand.driver = c.RestCommand.driver
+		c.driver = c.RestCommand.driver
+
 		exitCode = c.GrpcCommand.SharedRun(args, c.driver)
 	}
 

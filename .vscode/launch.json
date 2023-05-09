@@ -19,7 +19,6 @@
 				"--listen=unix:/tmp/vmware-desktop-utility.sock",
 				"--address=127.0.0.1",
 				"--port=5622",
-				"--listen=tcp:127.0.0.1:5623",
 				"--vmrest=https://fboltz:${env:GOVC_PASSWORD}@localhost.aldunelabs.com:8697"
 			]
 		}

@@ -23,7 +23,7 @@ const ENV_VAR_PREFIX = "VMWARE_DESKTOP_AUTOSCALER_UTILITY_"
 
 func Commands(name string, ui cli.Ui) (cmds map[string]cli.CommandFactory) {
 	cmds = map[string]cli.CommandFactory{
-		"api":                  BuildRestApiCommand(name, ui),
+		"api":                  BuildRestApiCommand(name, true, ui),
 		"grpc":                 BuildGrpcApiCommand(name, ui),
 		"full":                 BuildBothApiCommand(name, ui),
 		"version":              BuildVersionCommand(name, ui),

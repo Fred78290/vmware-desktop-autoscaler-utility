@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/user"
@@ -66,6 +67,7 @@ type vmrest struct {
 	password    string
 	port        int
 	username    string
+	vmrestURL   string
 }
 
 const lowers = "abcdefghijklmnopqrstuvwxyz"
@@ -87,6 +89,19 @@ const VAGRANT_NETDEV_PREFIX = "vgtnet"
 
 func (v *vmrest) Init() error {
 	var err error
+
+	if len(v.vmrestURL) > 0 {
+		var u *url.URL
+
+		if u, err = url.Parse(v.vmrestURL); err != nil {
+			return err
+		}
+
+		v.password, _ = u.User.Password()
+		v.username = u.User.Username()
+
+		return nil
+	}
 
 	if err = v.validate(); err != nil {
 		return err
@@ -112,9 +127,9 @@ func (v *vmrest) Init() error {
 		} else {
 
 			if strings.ToLower(u.Name) == "system" {
-				_h := v.home
+				home := v.home
 				v.home = strings.Replace(v.home, "system32", "SysWOW64", 1)
-				v.logger.Info("modified user home directory for SYSTEM", "user", u.Name, "original", _h, "updated", v.home)
+				v.logger.Info("modified user home directory for SYSTEM", "user", u.Name, "original", home, "updated", v.home)
 			}
 
 			v.config_path = path.Join(v.home, WINDOWS_VMREST_CONFIG)
@@ -153,25 +168,33 @@ func (v *vmrest) Init() error {
 }
 
 func (v *vmrest) Cleanup() {
-	if v.isWindows() {
-		v.logger.Debug("vmrest configuration not removed on Windows platform")
-	} else if v.home != "" {
-		v.logger.Trace("removing generated home directory", "path", v.home)
+	if len(v.vmrestURL) == 0 {
+		if v.isWindows() {
+			v.logger.Debug("vmrest configuration not removed on Windows platform")
+		} else if v.home != "" {
+			v.logger.Trace("removing generated home directory", "path", v.home)
 
-		if err := os.RemoveAll(v.home); err != nil {
-			v.logger.Error("failed to remove generated home directory path", "path", v.home, "error", err)
+			if err := os.RemoveAll(v.home); err != nil {
+				v.logger.Error("failed to remove generated home directory path", "path", v.home, "error", err)
+			}
 		}
 	}
 }
 
 func (v *vmrest) Active() (url string) {
-	v.activity <- struct{}{}
+	if len(v.vmrestURL) == 0 {
+		v.activity <- struct{}{}
+	}
 
 	return v.URL()
 }
 
 func (v *vmrest) URL() string {
-	return fmt.Sprintf(VMREST_URL, v.port)
+	if len(v.vmrestURL) == 0 {
+		return fmt.Sprintf(VMREST_URL, v.port)
+	} else {
+		return v.vmrestURL
+	}
 }
 
 func (v *vmrest) Username() string {
@@ -182,8 +205,8 @@ func (v *vmrest) Password() string {
 	return v.password
 }
 
-func (v *vmrest) Port() string {
-	return v.password
+func (v *vmrest) Port() int {
+	return v.port
 }
 
 func (v *vmrest) UserAgent() string {
@@ -191,90 +214,92 @@ func (v *vmrest) UserAgent() string {
 }
 
 func (v *vmrest) Runner() {
-	for {
-		select {
-		case <-v.activity:
-			v.logger.Trace("activity request detected")
+	if len(v.vmrestURL) == 0 {
+		for {
+			select {
+			case <-v.activity:
+				v.logger.Trace("activity request detected")
 
-			if v.command == nil {
-				v.logger.Debug("starting the process")
-				v.command = exec.Command(v.path)
+				if v.command == nil {
+					v.logger.Debug("starting the process")
+					v.command = exec.Command(v.path)
 
-				// Grab output from the process and send it to the logger.
-				// Useful for debugging if something goes wrong so we can
-				// see what the process is actually doing.
-				stderr, err := v.command.StderrPipe()
+					// Grab output from the process and send it to the logger.
+					// Useful for debugging if something goes wrong so we can
+					// see what the process is actually doing.
+					stderr, err := v.command.StderrPipe()
 
-				if err != nil {
-					v.logger.Error("failed to get stderr pipe", "error", err)
-					continue
-				}
+					if err != nil {
+						v.logger.Error("failed to get stderr pipe", "error", err)
+						continue
+					}
 
-				stdout, err := v.command.StdoutPipe()
+					stdout, err := v.command.StdoutPipe()
 
-				if err != nil {
-					v.logger.Error("failed to get stdout pipe", "error", err)
-					continue
-				}
+					if err != nil {
+						v.logger.Error("failed to get stdout pipe", "error", err)
+						continue
+					}
 
-				go func() {
-					r := bufio.NewReader(stdout)
+					go func() {
+						r := bufio.NewReader(stdout)
 
-					for {
-						if l, _, err := r.ReadLine(); err != nil {
-							v.logger.Warn("stdout pipe error", "error", err)
-							break
-						} else {
-							v.logger.Info("vmrest stdout", "output", string(l))
+						for {
+							if l, _, err := r.ReadLine(); err != nil {
+								v.logger.Warn("stdout pipe error", "error", err)
+								break
+							} else {
+								v.logger.Info("vmrest stdout", "output", string(l))
+							}
+
 						}
+					}()
 
-					}
-				}()
+					go func() {
+						r := bufio.NewReader(stderr)
 
-				go func() {
-					r := bufio.NewReader(stderr)
-
-					for {
-						if l, _, err := r.ReadLine(); err != nil {
-							v.logger.Warn("stderr pipe error", "error", err)
-							break
-						} else {
-							v.logger.Info("vmrest stderr", "output", string(l))
+						for {
+							if l, _, err := r.ReadLine(); err != nil {
+								v.logger.Warn("stderr pipe error", "error", err)
+								break
+							} else {
+								v.logger.Info("vmrest stderr", "output", string(l))
+							}
 						}
-					}
-				}()
+					}()
 
-				if err = v.homedStart(v.command); err != nil {
-					v.logger.Error("failed to start", "error", err)
-					continue
+					if err = v.homedStart(v.command); err != nil {
+						v.logger.Error("failed to start", "error", err)
+						continue
+					}
+
+					if _, err = os.FindProcess(v.command.Process.Pid); err != nil {
+						v.logger.Error("failed to locate started vmrest process", "error", err)
+						continue
+					}
+
+					// Start a cleanup function to prevent any unnoticed zombies from
+					// hanging around
+					go func() {
+						v.command.Wait()
+						v.command = nil
+						v.logger.Debug("process has been completed and reaped")
+					}()
+
+					v.logger.Debug("process has been started")
 				}
 
-				if _, err = os.FindProcess(v.command.Process.Pid); err != nil {
-					v.logger.Error("failed to locate started vmrest process", "error", err)
-					continue
+				/*		case <-time.After(VMREST_KEEPALIVE_SECONDS * time.Second):
+						if v.command != nil {
+							v.logger.Debug("halting running process")
+							v.command.Process.Kill()
+						}
+				*/
+			case <-v.ctx.Done():
+				v.logger.Warn("halting due to context done")
+				if v.command != nil {
+					v.command.Process.Kill()
 				}
-
-				// Start a cleanup function to prevent any unnoticed zombies from
-				// hanging around
-				go func() {
-					v.command.Wait()
-					v.command = nil
-					v.logger.Debug("process has been completed and reaped")
-				}()
-
-				v.logger.Debug("process has been started")
-			}
-
-			/*		case <-time.After(VMREST_KEEPALIVE_SECONDS * time.Second):
-					if v.command != nil {
-						v.logger.Debug("halting running process")
-						v.command.Process.Kill()
-					}
-			*/
-		case <-v.ctx.Done():
-			v.logger.Warn("halting due to context done")
-			if v.command != nil {
-				v.command.Process.Kill()
 			}
 		}
 	}
@@ -458,12 +483,16 @@ func (v *vmrest) validate() error {
 	return nil
 }
 
-func NewVmrest(ctx context.Context, vmrestPath string, logger hclog.Logger) (*vmrest, error) {
+func NewVmrest(ctx context.Context, externalVMRestURL string, vmrestPath string, logger hclog.Logger) (*vmrest, error) {
 	v := &vmrest{
-		activity: make(chan struct{}),
-		ctx:      ctx,
-		logger:   logger.Named("process"),
-		path:     vmrestPath,
+		ctx:       ctx,
+		logger:    logger.Named("process"),
+		vmrestURL: externalVMRestURL,
+		path:      vmrestPath,
+	}
+
+	if externalVMRestURL == "" {
+		v.activity = make(chan struct{})
 	}
 
 	return v, v.Init()
@@ -488,7 +517,7 @@ func NewVmrestDriver(ctx context.Context, c *settings.CommonConfig, f Driver, lo
 
 		logger.Debug("attempting to setup vmrest")
 
-		if v, err := NewVmrest(ctx, f.VmwarePaths().Vmrest, logger); err != nil {
+		if v, err := NewVmrest(ctx, c.VMRestURL, f.VmwarePaths().Vmrest, logger); err != nil {
 			logger.Warn("failed to create vmrest driver", "error", err)
 			logger.Info("using fallback driver")
 

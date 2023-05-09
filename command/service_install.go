@@ -208,6 +208,7 @@ func (c *ServiceInstallCommand) writeConfig(fpath string) (cpath string, err err
 	}
 
 	if c.Config.VMRestURL != "" {
+		config.RestApiConfig.Pvmrest = &c.Config.VMRestURL
 		config.GrpcApiConfig.Pvmrest = &c.Config.VMRestURL
 	}
 

@@ -23,14 +23,15 @@ const DEFAULT_RESTAPI_ADDRESS = "127.0.0.1"
 // Command for starting the REST API
 type RestApiCommand struct {
 	Command
-	Config *RestApiConfig
+	Config      *RestApiConfig
+	waitRestApi bool
 }
 
 type RestApiConfig struct {
 	settings.CommonConfig
 }
 
-func BuildRestApiCommand(name string, ui cli.Ui) cli.CommandFactory {
+func BuildRestApiCommand(name string, waitRestApi bool, ui cli.Ui) cli.CommandFactory {
 	return func() (cli.Command, error) {
 		flags := flag.NewFlagSet("api", flag.ContinueOnError)
 		data := make(map[string]interface{})
@@ -53,7 +54,9 @@ func BuildRestApiCommand(name string, ui cli.Ui) cli.CommandFactory {
 				UI:            ui,
 				flagdata:      data,
 			},
-			Config: &RestApiConfig{}}, nil
+			Config:      &RestApiConfig{},
+			waitRestApi: waitRestApi,
+		}, nil
 	}
 }
 
@@ -104,7 +107,9 @@ func (c *RestApiCommand) Run(args []string) int {
 		restApi.Stop()
 	})
 
-	<-restApi.HaltedChan
+	if c.waitRestApi {
+		<-restApi.HaltedChan
+	}
 
 	return 0
 }
@@ -191,6 +196,7 @@ func (c *RestApiCommand) setup(args []string) (err error) {
 	c.Config.Address = c.GetConfigValue("address", rc.Paddress)
 	c.Config.Timeout = c.GetConfigDuration("timeout", rc.Ptimeout)
 	c.Config.VMFolder = c.GetConfigValue("vmfolder", rc.Pvmfolder)
+	c.Config.VMRestURL = c.GetConfigValue("vmrest", rc.Pvmrest)
 	c.Config.Port = c.GetConfigInt64("port", rc.Pport)
 	c.Config.Driver = c.GetConfigValue("driver", rc.Pdriver)
 	c.Config.LicenseOverride = c.GetConfigValue("license_override", rc.PlicenseOverride)
