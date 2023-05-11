@@ -3,6 +3,7 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -52,4 +53,19 @@ func PollImmediate(interval, timeout time.Duration, condition wait.ConditionFunc
 	} else {
 		return wait.PollImmediate(interval, timeout, condition)
 	}
+}
+
+// FileExists Check if FileExists
+func FileExists(name string) bool {
+	if len(name) == 0 {
+		return false
+	}
+
+	if _, err := os.Stat(name); err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+	}
+
+	return true
 }

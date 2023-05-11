@@ -23,6 +23,11 @@ func installDirectory() string {
 		"AlduneLabs", "vmware-desktop-autoscaler-utility"))
 }
 
+func certificatDirectory() string {
+	return expandPath(filepath.Join(os.UserHomeDir(), "AppData"
+		"AlduneLabs", "vmware-desktop-autoscaler-utility"))
+}
+
 func directoryForVirtualMachine(vmfolder, name string) string {
 	return path.Join(vmfolder, name, name+".vmx")
 }

@@ -29,50 +29,58 @@ func GenerateCertificate() error {
 	if err != nil {
 		return fmt.Errorf("path generation failed: %s", err)
 	}
+
 	serialMax := new(big.Int).Lsh(big.NewInt(1), 128)
 	serial, err := rand.Int(rand.Reader, serialMax)
 	if err != nil {
 		return fmt.Errorf("setup failure encountered: %s", err)
 	}
+
 	clientSerial, err := rand.Int(rand.Reader, serialMax)
 	if err != nil {
 		return fmt.Errorf("setup failure encountered: %s", err)
 	}
+
 	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		return fmt.Errorf("private key generation failed: %s", err)
 	}
-	expires := time.Now().Add(((time.Hour * 24) * 365) * CERTIFICATE_EXPIRES_IN)
+
+	expires := time.Now().Add(((time.Hour * 24) * 3650) * CERTIFICATE_EXPIRES_IN)
 	cert := x509.Certificate{
 		BasicConstraintsValid: true,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
 		IsCA:                  true,
-		KeyUsage: x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature |
-			x509.KeyUsageCertSign | x509.KeyUsageDataEncipherment,
-		NotBefore:    time.Now(),
-		NotAfter:     expires,
-		SerialNumber: serial,
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign | x509.KeyUsageDataEncipherment,
+		NotBefore:             time.Now(),
+		NotAfter:              expires,
+		SerialNumber:          serial,
+		DNSNames:              []string{"localhost", "*"},
 		Subject: pkix.Name{
-			Organization: []string{"HashiCorp"},
+			CommonName:   "Root CA",
+			Organization: []string{"AlduneLabs"},
 		},
 	}
-	certBytes, err := x509.CreateCertificate(rand.Reader, &cert, &cert,
-		&privateKey.PublicKey, privateKey)
+
+	certBytes, err := x509.CreateCertificate(rand.Reader, &cert, &cert, &privateKey.PublicKey, privateKey)
 	if err != nil {
 		return fmt.Errorf("certificate generation failed: %s", err)
 	}
 
-	if err := os.RemoveAll(paths.Certificate); err != nil {
+	if err = os.RemoveAll(paths.Certificate); err != nil {
 		return fmt.Errorf("certificate path cleanup error: %s", err)
 	}
-	if err := os.RemoveAll(paths.PrivateKey); err != nil {
+
+	if err = os.RemoveAll(paths.PrivateKey); err != nil {
 		return fmt.Errorf("private key path cleanup error: %s", err)
 	}
-	if err := os.RemoveAll(paths.ClientCertificate); err != nil {
+
+	if err = os.RemoveAll(paths.ClientCertificate); err != nil {
 		return fmt.Errorf("client certificate path cleanup error: %s", err)
 	}
-	if err := os.RemoveAll(paths.ClientKey); err != nil {
+
+	if err = os.RemoveAll(paths.ClientKey); err != nil {
 		return fmt.Errorf("client key path cleanup error: %s", err)
 	}
 
@@ -80,6 +88,7 @@ func GenerateCertificate() error {
 	if err != nil {
 		return fmt.Errorf("client key generation failed: %s", err)
 	}
+
 	clientCert := x509.Certificate{
 		BasicConstraintsValid: true,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
@@ -89,16 +98,19 @@ func GenerateCertificate() error {
 		NotBefore:             time.Now(),
 		NotAfter:              expires,
 		SerialNumber:          clientSerial,
+		DNSNames:              []string{"localhost", "*"},
 		Subject: pkix.Name{
+			CommonName:   "localhost",
 			Organization: []string{"AlduneLabs"},
 		},
 	}
+
 	parentCert, err := x509.ParseCertificate(certBytes)
 	if err != nil {
 		return fmt.Errorf("cert parse failure: %s", err)
 	}
-	clientCertBytes, err := x509.CreateCertificate(rand.Reader, &clientCert, parentCert,
-		&clientKey.PublicKey, privateKey)
+
+	clientCertBytes, err := x509.CreateCertificate(rand.Reader, &clientCert, parentCert, &clientKey.PublicKey, privateKey)
 	if err != nil {
 		return fmt.Errorf("client certificate generation failed: %s", err)
 	}
@@ -146,14 +158,16 @@ func GenerateCertificate() error {
 // then we just use the executable's directory as the base and create
 // a certificate directory within.
 func GetCertificatePaths() (*CertificatePaths, error) {
-	basePath := DirectoryFor("certificates")
+	basePath := CertificatDirectory()
+
 	if err := os.MkdirAll(basePath, 0755); err != nil {
 		return nil, err
 	}
+
 	return &CertificatePaths{
-		Certificate:       path.Join(basePath, "vmware-desktop-autoscaler-utility.crt"),
-		PrivateKey:        path.Join(basePath, "vmware-desktop-autoscaler-utility.key"),
-		ClientCertificate: path.Join(basePath, "vmware-desktop-autoscaler-utility.client.crt"),
-		ClientKey:         path.Join(basePath, "vmware-desktop-autoscaler-utility.client.key"),
+		Certificate:       path.Join(basePath, "ca.crt"),
+		PrivateKey:        path.Join(basePath, "ca.key"),
+		ClientCertificate: path.Join(basePath, "client.crt"),
+		ClientKey:         path.Join(basePath, "client.key"),
 	}, nil
 }

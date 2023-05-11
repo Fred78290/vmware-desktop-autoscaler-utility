@@ -28,6 +28,7 @@ func Commands(name string, ui cli.Ui) (cmds map[string]cli.CommandFactory) {
 		"full":                 BuildBothApiCommand(name, ui),
 		"version":              BuildVersionCommand(name, ui),
 		"certificate generate": BuildCertificateGenerateCommand(name, ui),
+		"certificate get":      BuildCertificateGetCommand(name, ui),
 		"service install":      BuildServiceInstallCommand(name, ui),
 		"service uninstall":    BuildServiceUninstallCommand(name, ui),
 	}

@@ -193,7 +193,7 @@ func (v *vmrest) URL() string {
 	if len(v.vmrestURL) == 0 {
 		return fmt.Sprintf(VMREST_URL, v.port)
 	} else {
-		return v.vmrestURL
+		return v.vmrestURL + "api"
 	}
 }
 

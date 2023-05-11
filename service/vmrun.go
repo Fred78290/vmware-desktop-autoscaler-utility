@@ -136,10 +136,17 @@ func (v *VmrunExe) fetchVM(vmuuid, vmx string) (*VirtualMachine, error) {
 		return nil, err
 	} else if power, err := v.client.GetPowerState(vmuuid); err != nil {
 		return nil, err
-	} else if ip, err := v.client.GetIPAddress(vmuuid); err != nil {
-		return nil, err
 	} else if name, err := v.client.GetVMParams(vmuuid, "vmname"); err != nil {
 		return nil, err
+	} else if ip, err := v.client.GetIPAddress(vmuuid); err != nil {
+		return &VirtualMachine{
+			Path:    vmx,
+			Uuid:    vmuuid,
+			Name:    name.Value,
+			Vcpus:   info.Cpu.Processors,
+			Memory:  info.Memory,
+			Powered: strings.ToLower(power.PowerState) == "on",
+		}, nil
 	} else {
 		return &VirtualMachine{
 			Path:    vmx,
@@ -185,7 +192,7 @@ func (v *VmrunExe) saveVMX(vmxpath string, datas map[string]string) error {
 	} else {
 		datawriter := bufio.NewWriter(file)
 
-		datawriter.WriteString(".encoding = \"UTF-8\"")
+		datawriter.WriteString(".encoding = \"UTF-8\"\n")
 
 		for k, v := range datas {
 			_, _ = datawriter.WriteString(fmt.Sprintf("%s = \"%s\"\n", k, v))
@@ -215,8 +222,8 @@ func (v *VmrunExe) loadVMX(vmxpath string) (map[string]string, error) {
 
 			if !strings.HasPrefix(line, ".encoding") {
 				segments := strings.Split(line, "=")
-				key := strings.ToLower(segments[0])
-				value := strings.Trim(segments[0], "\"")
+				key := strings.ToLower(strings.Trim(segments[0], " "))
+				value := strings.Trim(strings.Trim(segments[1], " "), "\"")
 
 				result[strings.TrimSpace(key)] = strings.TrimSpace(value)
 			}
@@ -260,19 +267,13 @@ func (v *VmrunExe) RunningVms() ([]*VirtualMachine, error) {
 	}
 }
 
-func (v *VmrunExe) isRunningVm(vmx string) (bool, error) {
+func (v *VmrunExe) isRunningVm(vmuuid string) (bool, error) {
 
-	if vms, err := v.RunningVms(); err != nil {
+	if power, err := v.client.GetPowerState(vmuuid); err != nil {
 		return false, err
 	} else {
-		for _, vm := range vms {
-			if vm.Path == vmx {
-				return true, nil
-			}
-		}
+		return strings.ToLower(power.PowerState) == "on", nil
 	}
-
-	return false, nil
 }
 
 func (v *VmrunExe) createVmPath(name string) (string, error) {
@@ -653,14 +654,14 @@ func (v *VmrunExe) VirtualMachineByName(vmname string) (foundVM *VirtualMachine,
 				}
 			}
 		}
+	} else {
+		if foundVM.Powered, err = v.isRunningVm(foundVM.Uuid); err != nil {
+			return foundVM, status.Errorf(codes.Unavailable, "failed to get power status for VM: %s, reason: %v", foundVM.Path, err)
+		}
 	}
 
 	if foundVM == nil {
 		return nil, status.Errorf(codes.NotFound, "vm with name: %s not found", vmname)
-	}
-
-	if foundVM.Powered, err = v.isRunningVm(foundVM.Path); err != nil {
-		return foundVM, status.Errorf(codes.Unavailable, "failed to get power status for VM: %s, reason: %v", foundVM.Path, err)
 	}
 
 	return foundVM, nil
@@ -687,14 +688,14 @@ func (v *VmrunExe) VirtualMachineByUUID(vmuuid string) (foundVM *VirtualMachine,
 			}
 		}
 
+	} else {
+		if foundVM.Powered, err = v.isRunningVm(foundVM.Uuid); err != nil {
+			return foundVM, status.Errorf(codes.Unavailable, "failed to get power status for VM: %s, reason: %v", vmuuid, err)
+		}
 	}
 
 	if foundVM == nil {
 		return nil, status.Errorf(codes.NotFound, "vm with uuid: %s not found", vmuuid)
-	}
-
-	if foundVM.Powered, err = v.isRunningVm(foundVM.Path); err != nil {
-		return foundVM, status.Errorf(codes.Unavailable, "failed to get power status for VM: %s, reason: %v", vmuuid, err)
 	}
 
 	return foundVM, nil

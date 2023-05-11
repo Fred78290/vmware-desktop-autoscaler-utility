@@ -8,6 +8,10 @@ func InstallDirectory() string {
 	return installDirectory()
 }
 
+func CertificatDirectory() string {
+	return certificatDirectory()
+}
+
 func VMFolder() string {
 	return vmfolderDirectory()
 }

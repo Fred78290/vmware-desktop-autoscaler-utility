@@ -16,6 +16,7 @@ import (
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/service"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utility"
 	hclog "github.com/hashicorp/go-hclog"
+	"github.com/mitchellh/cli"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
@@ -36,10 +37,12 @@ type Grpc struct {
 	address    string
 	HaltedChan chan bool
 	logger     hclog.Logger
+	logDisplay bool
+	UI         cli.Ui
 	Driver     driver.Driver
 }
 
-func CreateGrpc(bindAddr string, driver driver.Driver, logger hclog.Logger) (*Grpc, error) {
+func CreateGrpc(bindAddr string, driver driver.Driver, logDisplay bool, ui cli.Ui, logger hclog.Logger) (*Grpc, error) {
 	if u, err := url.Parse(bindAddr); err != nil {
 		return nil, err
 	} else {
@@ -63,19 +66,57 @@ func CreateGrpc(bindAddr string, driver driver.Driver, logger hclog.Logger) (*Gr
 			HaltedChan: make(chan bool),
 			stopChan:   make(chan bool),
 			logger:     logger,
+			logDisplay: logDisplay,
+			UI:         ui,
 		}
 
 		return srv, nil
 	}
 }
 
+func (g *Grpc) Debugf(format string, args ...interface{}) {
+	format = fmt.Sprintf(format, args...)
+
+	g.logger.Debug(fmt.Sprintf(format, args...))
+}
+
+func (g *Grpc) Warnf(format string, args ...interface{}) {
+	format = fmt.Sprintf(format, args...)
+
+	if g.logDisplay {
+		g.logger.Warn(fmt.Sprintf(format, args...))
+	} else {
+		g.UI.Warn(format)
+	}
+}
+
+func (g *Grpc) Infof(format string, args ...interface{}) {
+	format = fmt.Sprintf(format, args...)
+
+	if g.logDisplay {
+		g.logger.Info(fmt.Sprintf(format, args...))
+	} else {
+		g.UI.Info(format)
+	}
+}
+
+func (g *Grpc) Errorf(format string, args ...interface{}) {
+	format = fmt.Sprintf(format, args...)
+
+	if g.logDisplay {
+		g.logger.Error(fmt.Sprintf(format, args...))
+	} else {
+		g.UI.Error(format)
+	}
+}
+
 func (g *Grpc) Start() error {
-	g.logger.Debug("start grpc service requested")
+	g.Debugf("start grpc service requested")
 	g.actionSync.Lock()
 
 	defer g.actionSync.Unlock()
 
-	g.logger.Info("api service start", "transport", g.address, "listen", g.address)
+	g.Infof("gRPC service start transport: %s, listen: %s", g.address, g.address)
 
 	server, err := g.createServer()
 
@@ -88,13 +129,13 @@ func (g *Grpc) Start() error {
 
 	go g.consume()
 
-	g.logger.Debug("api ready for message consumption")
+	g.Debugf("api ready for message consumption")
 
 	return nil
 }
 
 func (g *Grpc) Stop() error {
-	g.logger.Debug("stop grpc service requested")
+	g.Debugf("stop grpc service requested")
 	g.actionSync.Lock()
 	defer g.actionSync.Unlock()
 
@@ -102,7 +143,7 @@ func (g *Grpc) Stop() error {
 		return errors.New("server process is currently halted")
 	}
 
-	g.logger.Debug("sending stop notification to consumer")
+	g.Debugf("sending stop notification to consumer")
 
 	g.stopChan <- true
 
@@ -128,9 +169,11 @@ func (g *Grpc) createServer() (*grpc.Server, error) {
 		} else {
 
 			transportCreds := credentials.NewTLS(&tls.Config{
-				ClientAuth:   tls.RequireAndVerifyClientCert,
 				Certificates: []tls.Certificate{certificate},
+				ClientAuth:   tls.RequireAndVerifyClientCert,
 				ClientCAs:    certPool,
+				RootCAs:      certPool,
+				ServerName:   "localhost",
 			})
 
 			server = grpc.NewServer(grpc.Creds(transportCreds))
@@ -150,7 +193,7 @@ func (g *Grpc) consume() {
 
 	defer func() {
 		g.Halted = true
-		g.logger.Debug("sending halt notification")
+		g.Debugf("sending halt notification")
 		g.HaltedChan <- true
 	}()
 
@@ -158,20 +201,20 @@ func (g *Grpc) consume() {
 		reflection.Register(g.server)
 
 		if listener, err := net.Listen(g.transport, g.address); err != nil {
-			g.logger.Error("failed to listen: %v", err)
+			g.Errorf("failed to listen: %v", err)
 		} else if err = g.server.Serve(listener); err != nil {
-			g.logger.Error("failed to serve: %v", err)
+			g.Errorf("failed to serve: %v", err)
 		}
 	}()
 
 	//	go http.Serve(g.listener, http.HandlerFunc(g.RequestHandler))
 
 	if <-g.stopChan {
-		g.logger.Debug("stop notification received - closing")
+		g.Debugf("stop notification received - closing")
 		g.server.Stop()
-		g.logger.Trace("wait for inflight requests to complete")
+		g.Debugf("wait for inflight requests to complete")
 		g.reqTracker.Wait()
-		g.logger.Trace("grpc consumer halted")
+		g.Debugf("grpc consumer halted")
 	}
 }
 
