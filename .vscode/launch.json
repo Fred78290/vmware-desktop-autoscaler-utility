@@ -17,6 +17,7 @@
 			},
 			"args": [
 				"full",
+				"--debug=true",
 				"--listen=unix:/tmp/vmware-desktop-utility.sock",
 				"--address=127.0.0.1",
 				"--port=5622",

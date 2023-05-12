@@ -156,38 +156,47 @@ func (c *Command) loadConfigFile(path string, config *ConfigFile) {
 // Initializes the logger based on configuration values
 func (c *Command) initlogger(n *Config, name string) (err error) {
 	o := io.Discard
+
 	if n.Debug || n.Level != "" {
 		o = os.Stderr
 	}
+
 	logOpt := &hclog.LoggerOptions{
 		Name:   c.Name,
-		Output: o}
+		Output: o,
+	}
+
 	if n.LogFile != "" {
 		err = os.MkdirAll(path.Dir(n.LogFile), 0755)
 		if err != nil {
 			return
 		}
+
 		md := os.O_CREATE | os.O_WRONLY
 		if n.LogAppend {
 			md = md | os.O_APPEND
 		}
+
 		f, err := os.OpenFile(n.LogFile, md, 0644)
 		if err != nil {
 			return err
 		}
+
 		logOpt.Output = f
 	}
+
 	if n.Debug {
 		logOpt.Level = hclog.LevelFromString("trace")
-	} else {
-		if n.Level != "" {
-			logOpt.Level = hclog.LevelFromString(n.Level)
-		}
+	} else if n.Level != "" {
+		logOpt.Level = hclog.LevelFromString(n.Level)
 	}
+
 	c.logger = hclog.New(logOpt)
+
 	if name != "" {
 		c.logger = c.logger.Named(name)
 	}
+
 	return
 }
 

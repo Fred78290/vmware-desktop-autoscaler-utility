@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -11,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/exp/maps"
 
 	"github.com/Fred78290/vmrest-go-client/client"
 	"github.com/Fred78290/vmrest-go-client/client/model"
@@ -145,7 +142,7 @@ func (v *VmrunExe) fetchVM(vmuuid, vmx string) (*VirtualMachine, error) {
 			Name:    name.Value,
 			Vcpus:   info.Cpu.Processors,
 			Memory:  info.Memory,
-			Powered: strings.ToLower(power.PowerState) == "on",
+			Powered: strings.ToLower(power.PowerState) == "poweredon",
 		}, nil
 	} else {
 		return &VirtualMachine{
@@ -154,7 +151,7 @@ func (v *VmrunExe) fetchVM(vmuuid, vmx string) (*VirtualMachine, error) {
 			Name:    name.Value,
 			Vcpus:   info.Cpu.Processors,
 			Memory:  info.Memory,
-			Powered: strings.ToLower(power.PowerState) == "on",
+			Powered: strings.ToLower(power.PowerState) == "poweredon",
 			Address: ip.Ip,
 		}, nil
 	}
@@ -183,53 +180,6 @@ func (v *VmrunExe) registeredVM() error {
 		v.cachebyname = cachebyname
 
 		return nil
-	}
-}
-
-func (v *VmrunExe) saveVMX(vmxpath string, datas map[string]string) error {
-	if file, err := os.OpenFile(vmxpath, os.O_WRONLY, 0644); err != nil {
-		return err
-	} else {
-		datawriter := bufio.NewWriter(file)
-
-		datawriter.WriteString(".encoding = \"UTF-8\"\n")
-
-		for k, v := range datas {
-			_, _ = datawriter.WriteString(fmt.Sprintf("%s = \"%s\"\n", k, v))
-		}
-
-		datawriter.Flush()
-		file.Close()
-	}
-
-	return nil
-}
-
-func (v *VmrunExe) loadVMX(vmxpath string) (map[string]string, error) {
-
-	if file, err := os.Open(vmxpath); err != nil {
-		return nil, err
-	} else {
-		defer file.Close()
-
-		result := make(map[string]string)
-		fileScanner := bufio.NewScanner(file)
-
-		fileScanner.Split(bufio.ScanLines)
-
-		for fileScanner.Scan() {
-			line := fileScanner.Text()
-
-			if !strings.HasPrefix(line, ".encoding") {
-				segments := strings.Split(line, "=")
-				key := strings.ToLower(strings.Trim(segments[0], " "))
-				value := strings.Trim(strings.Trim(segments[1], " "), "\"")
-
-				result[strings.TrimSpace(key)] = strings.TrimSpace(value)
-			}
-		}
-
-		return result, nil
 	}
 }
 
@@ -272,7 +222,7 @@ func (v *VmrunExe) isRunningVm(vmuuid string) (bool, error) {
 	if power, err := v.client.GetPowerState(vmuuid); err != nil {
 		return false, err
 	} else {
-		return strings.ToLower(power.PowerState) == "on", nil
+		return strings.ToLower(power.PowerState) == "poweredon", nil
 	}
 }
 
@@ -286,12 +236,20 @@ func (v *VmrunExe) createVmPath(name string) (string, error) {
 	return vmpath, nil
 }
 
-func (v *VmrunExe) expandDisk(vmxpath string, diskSizeInMb int, vmx map[string]string) error {
+func (v *VmrunExe) expandDisk(vmxpath string, diskSizeInMb int, vmx *utils.VMXMap) error {
 
-	if diskSizeInMb > 0 {
-		for _, disk := range []string{"nvme0:0", "scsi0:0", "sata0:0"} {
-			if utils.StrToBool(vmx[fmt.Sprintf("%s.present", disk)]) {
-				vmdk := path.Join(path.Dir(vmxpath), vmx[fmt.Sprintf("%s.filename", disk)])
+	if diskSizeInMb == 0 {
+		return nil
+	}
+
+	for _, disk := range []string{"nvme0:0", "scsi0:0", "sata0:0"} {
+		key := fmt.Sprintf("%s.present", disk)
+
+		if utils.StrToBool(vmx.Get(key)) {
+			key = fmt.Sprintf("%s.filename", disk)
+
+			if vmx.Has(key) {
+				vmdk := path.Join(path.Dir(vmxpath), vmx.Get(key))
 
 				if _, err := os.Stat(vmdk); err != nil {
 					return status.Errorf(codes.AlreadyExists, "VMDK: %s not found", vmdk)
@@ -306,11 +264,13 @@ func (v *VmrunExe) expandDisk(vmxpath string, diskSizeInMb int, vmx map[string]s
 
 					return status.Errorf(codes.Internal, "failed to expand VMDK: %s to %dM, reason: %s", vmdk, diskSizeInMb, out)
 				}
+
+				return nil
 			}
 		}
 	}
 
-	return nil
+	return fmt.Errorf("no disk found for vmx: %s", vmxpath)
 }
 
 func (v *VmrunExe) clone(template *VirtualMachine, name string) (newpath string, err error) {
@@ -332,26 +292,26 @@ func (v *VmrunExe) clone(template *VirtualMachine, name string) (newpath string,
 	}
 }
 
-func (v *VmrunExe) prepareVMX(request *CreateVirtualMachine, vmxpath string, vmx map[string]string) (string, error) {
-	vmx["vmname"] = request.Name
-	vmx["numvcpus"] = strconv.Itoa(request.Vcpus)
-	vmx["memsize"] = strconv.Itoa(request.Memory)
+func (v *VmrunExe) prepareVMX(request *CreateVirtualMachine, vmxpath string, vmx *utils.VMXMap) (string, error) {
+	vmx.Set("vmname", request.Name)
+	vmx.Set("numvcpus", strconv.Itoa(request.Vcpus))
+	vmx.Set("memsize", strconv.Itoa(request.Memory))
 
-	delete(vmx, "instance-id")
-	delete(vmx, "hostname")
-	delete(vmx, "seedfrom")
-	delete(vmx, "public-keys")
-	delete(vmx, "user-data")
-	delete(vmx, "password")
+	vmx.Delete("instance-id")
+	vmx.Delete("hostname")
+	vmx.Delete("seedfrom")
+	vmx.Delete("public-keys")
+	vmx.Delete("user-data")
+	vmx.Delete("password")
 
 	for k, v := range request.GuestInfos {
-		vmx[k] = v
+		vmx.Set(k, v)
 	}
 
 	// Remove ethernet cards
-	for _, key := range maps.Keys(vmx) {
+	for _, key := range vmx.Keys() {
 		if strings.HasPrefix(key, "ethernet") {
-			delete(vmx, key)
+			vmx.Delete(key)
 		}
 	}
 
@@ -365,25 +325,25 @@ func (v *VmrunExe) prepareVMX(request *CreateVirtualMachine, vmxpath string, vmx
 		inf := request.Networks[card]
 		ethernet := fmt.Sprintf("ethernet%d.", card)
 
-		vmx[ethernet+"present"] = "TRUE"
-		vmx[ethernet+"virtualDev"] = inf.Device
-		vmx[ethernet+"connectionType"] = inf.ConnectionType
-		vmx[ethernet+"linkStatePropagation.enable"] = "TRUE"
-		vmx[ethernet+"pciSlotNumber"] = pcislotnumber[card]
+		vmx.Set(ethernet+"present", "TRUE")
+		vmx.Set(ethernet+"virtualDev", inf.Device)
+		vmx.Set(ethernet+"connectionType", inf.ConnectionType)
+		vmx.Set(ethernet+"linkStatePropagation.enable", "TRUE")
+		vmx.Set(ethernet+"pciSlotNumber", pcislotnumber[card])
 
 		if inf.ConnectionType == "custom" {
-			vmx[ethernet+"vnet"] = inf.Vnet
+			vmx.Set(ethernet+"vnet", inf.Vnet)
 		}
 
 		if inf.MacAddress != "generated" {
-			vmx[ethernet+"addressType"] = "static"
-			vmx[ethernet+"address"] = inf.MacAddress
+			vmx.Set(ethernet+"addressType", "static")
+			vmx.Set(ethernet+"address", inf.MacAddress)
 		} else {
-			vmx[ethernet+"addressType"] = inf.MacAddress
+			vmx.Set(ethernet+"addressType", inf.MacAddress)
 		}
 	}
 
-	if err := v.saveVMX(vmxpath, vmx); err != nil {
+	if err := vmx.Save(vmxpath); err != nil {
 		return "", err
 	}
 
@@ -401,7 +361,7 @@ func (v *VmrunExe) Create(request *CreateVirtualMachine) (*VirtualMachine, error
 		return nil, status.Errorf(codes.NotFound, "Template: %s, not found", request.Template)
 	} else if vmxpath, err := v.clone(template, request.Name); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "failed to clone VM: %s, reason: %v", template.Path, err)
-	} else if vmx, err := v.loadVMX(vmxpath); err != nil {
+	} else if vmx, err := utils.LoadVMX(vmxpath); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "failed to load VMX: %s, reason: %v", vmxpath, err)
 	} else if vmuuid, err := v.prepareVMX(request, vmxpath, vmx); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "failed to prepare VM: %s, reason: %v", template.Path, err)
@@ -447,6 +407,8 @@ func (v *VmrunExe) PowerOn(vmuuid string) (bool, error) {
 
 			return false, status.Errorf(codes.Internal, "failed to power on VM: %s, reason: %s", vmuuid, out)
 		}
+
+		found.Powered = true
 	}
 
 	return true, nil
@@ -467,6 +429,8 @@ func (v *VmrunExe) PowerOff(vmuuid string) (bool, error) {
 
 			return false, status.Errorf(codes.Internal, "failed to power off VM: %s, reason: %s", vmuuid, out)
 		}
+
+		found.Powered = true
 	}
 
 	return true, nil
@@ -512,7 +476,7 @@ func (v *VmrunExe) getNicAddress(macaddress string, stack *model.NicIpStackAll) 
 func (v *VmrunExe) Status(vmuuid string) (*VirtualMachineStatus, error) {
 	if vm, err := v.VirtualMachineByUUID(vmuuid); err != nil {
 		return nil, err
-	} else if vmx, err := v.loadVMX(vm.Path); err != nil {
+	} else if vmx, err := utils.LoadVMX(vm.Path); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "can't load vmx for %s", vm.Path)
 	} else if nics, err := v.client.GetNicInfo(vmuuid); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "can't get nics for vm %s, reason: %v", vm.Path, err)
@@ -525,29 +489,33 @@ func (v *VmrunExe) Status(vmuuid string) (*VirtualMachineStatus, error) {
 		}
 
 		for {
-			if present, found := vmx[fmt.Sprintf("ethernet%d.present", card)]; found {
+			key := fmt.Sprintf("ethernet%d.present", card)
+
+			if vmx.Has(key) {
 				var macaddress string
-				addressType := vmx[fmt.Sprintf("ethernet%d.addresstype", card)]
+
+				present := vmx.Get(fmt.Sprintf("ethernet%d.present", card))
+				addressType := vmx.Get(fmt.Sprintf("ethernet%d.addresstype", card))
 
 				if addressType == "generated" {
-					macaddress = vmx[fmt.Sprintf("ethernet%d.generatedaddress", card)]
+					macaddress = vmx.Get(fmt.Sprintf("ethernet%d.generatedaddress", card))
 				} else {
-					macaddress = vmx[fmt.Sprintf("ethernet%d.address", card)]
+					macaddress = vmx.Get(fmt.Sprintf("ethernet%d.address", card))
 				}
 
 				ethernet := &EthernetCard{
 					Present:              utils.StrToBool(present),
 					IP4Address:           v.getNicAddress(macaddress, nics),
 					AddressType:          addressType,
-					BsdName:              vmx[fmt.Sprintf("ethernet%d.bsdname", card)],
-					ConnectionType:       vmx[fmt.Sprintf("ethernet%d.connectiontype", card)],
-					DisplayName:          vmx[fmt.Sprintf("ethernet%d.displayname", card)],
+					BsdName:              vmx.Get(fmt.Sprintf("ethernet%d.bsdname", card)),
+					ConnectionType:       vmx.Get(fmt.Sprintf("ethernet%d.connectiontype", card)),
+					DisplayName:          vmx.Get(fmt.Sprintf("ethernet%d.displayname", card)),
 					MacAddress:           macaddress,
-					MacAddressOffset:     utils.StrToInt(vmx[fmt.Sprintf("ethernet%d.generatedaddressoffset", card)]),
-					LinkStatePropagation: utils.StrToBool(vmx[fmt.Sprintf("ethernet%d.linkstatepropagation.enable", card)]),
-					PciSlotNumber:        utils.StrToInt(vmx[fmt.Sprintf("ethernet%d.pcislotnumber", card)]),
-					VirtualDev:           vmx[fmt.Sprintf("ethernet%d.virtualdev", card)],
-					Vnet:                 vmx[fmt.Sprintf("ethernet%d.vnet", card)],
+					MacAddressOffset:     utils.StrToInt(vmx.Get(fmt.Sprintf("ethernet%d.generatedaddressoffset", card))),
+					LinkStatePropagation: utils.StrToBool(vmx.Get(fmt.Sprintf("ethernet%d.linkstatepropagation.enable", card))),
+					PciSlotNumber:        utils.StrToInt(vmx.Get(fmt.Sprintf("ethernet%d.pcislotnumber", card))),
+					VirtualDev:           vmx.Get(fmt.Sprintf("ethernet%d.virtualdev", card)),
+					Vnet:                 vmx.Get(fmt.Sprintf("ethernet%d.vnet", card)),
 				}
 
 				card++
@@ -603,8 +571,8 @@ func (v *VmrunExe) WaitForToolsRunning(vmuuid string) (bool, error) {
 			exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
 
 			if exitCode != 0 {
-				v.logger.Debug("vmrun getGuestIPAddress failed", "exitcode", exitCode)
-				v.logger.Trace("vmrun getGuestIPAddress failed", "output", out)
+				v.logger.Debug("vmrun checkToolsState failed", "exitcode", exitCode)
+				v.logger.Trace("vmrun checkToolsState failed", "output", out)
 
 				return false, status.Errorf(codes.Internal, "failed to wait for tools running for VM: %s, reason: %s", vmuuid, out)
 			}
@@ -625,13 +593,15 @@ func (v *VmrunExe) WaitForToolsRunning(vmuuid string) (bool, error) {
 }
 
 func (v *VmrunExe) SetAutoStart(vmuuid string, autostart bool) (bool, error) {
-	if vm, err := v.VirtualMachineByUUID(vmuuid); err != nil {
+	if _, err := v.VirtualMachineByUUID(vmuuid); err != nil {
 		return false, err
-	} else if vm.Powered {
-		return false, status.Errorf(codes.FailedPrecondition, "failed to set autostart for VM: %s is powered", vmuuid)
-	} else {
-		return false, status.Errorf(codes.Unimplemented, "method SetAutoStart not yet defined for %s", vm.Path)
+		//	} else if vm.Powered {
+		//		return false, status.Errorf(codes.FailedPrecondition, "failed to set autostart for VM: %s is powered", vmuuid)
+		//	} else {
+		//		return false, status.Errorf(codes.Unimplemented, "method SetAutoStart not yet defined for %s", vm.Path)
 	}
+
+	return autostart, nil
 }
 
 func (v *VmrunExe) VirtualMachineByName(vmname string) (foundVM *VirtualMachine, err error) {
