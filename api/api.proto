@@ -47,6 +47,8 @@ message NetworkInterface {
 	string vnet = 3;
 	string type = 4;
 	string device = 5;
+	string bsdName = 6;
+	string displayName = 7;
 }
 
 message CreateRequest {

@@ -4,12 +4,30 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
 type VMXMap struct {
 	vmx  map[string]string
 	keys map[string]string
+}
+
+func (vmx *VMXMap) Cleanup() {
+	vmx.Delete("instance-id")
+	vmx.Delete("hostname")
+	vmx.Delete("seedfrom")
+	vmx.Delete("public-keys")
+	vmx.Delete("user-data")
+	vmx.Delete("password")
+	vmx.Delete("vmxstats.filename")
+
+	// Remove ethernet cards & old guest info
+	for _, key := range vmx.Keys() {
+		if strings.HasPrefix(key, "ethernet") || strings.HasPrefix(key, "guestinfo") {
+			vmx.Delete(key)
+		}
+	}
 }
 
 func (vmx *VMXMap) Has(key string) bool {
@@ -34,10 +52,22 @@ func (vmx *VMXMap) Delete(key string) string {
 	return ""
 }
 
+func (vmx *VMXMap) sortedKeys() []string {
+	result := make([]string, 0, len(vmx.keys))
+
+	for k := range vmx.vmx {
+		result = append(result, k)
+	}
+
+	sort.Strings(result)
+
+	return result
+}
+
 func (vmx *VMXMap) Keys() []string {
 	result := make([]string, 0, len(vmx.keys))
 
-	for k, _ := range vmx.keys {
+	for k := range vmx.keys {
 		result = append(result, k)
 	}
 
@@ -91,8 +121,10 @@ func (vmx *VMXMap) Save(vmxpath string) error {
 
 		datawriter.WriteString(".encoding = \"UTF-8\"\n")
 
-		for k, v := range vmx.vmx {
-			datawriter.WriteString(fmt.Sprintf("%s = \"%s\"\n", k, v))
+		sortedKeys := vmx.sortedKeys()
+
+		for _, k := range sortedKeys {
+			datawriter.WriteString(fmt.Sprintf("%s = \"%s\"\n", k, vmx.vmx[k]))
 		}
 
 		datawriter.Flush()

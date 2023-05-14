@@ -241,6 +241,8 @@ func (g *Grpc) Create(ctx context.Context, req *api.CreateRequest) (*api.CreateR
 			Vnet:           network.Vnet,
 			ConnectionType: network.Type,
 			Device:         network.Device,
+			BsdName:        network.BsdName,
+			DisplayName:    network.DisplayName,
 		})
 	}
 

@@ -49,6 +49,8 @@ type NetworkInterface struct {
 	Vnet           string
 	ConnectionType string
 	Device         string
+	BsdName        string
+	DisplayName    string
 }
 
 type CreateVirtualMachine struct {
@@ -255,7 +257,7 @@ func (v *VmrunExe) expandDisk(vmxpath string, diskSizeInMb int, vmx *utils.VMXMa
 					return status.Errorf(codes.AlreadyExists, "VMDK: %s not found", vmdk)
 				}
 
-				cmd := exec.Command(v.exeVdiskManager, "-x", fmt.Sprintf("%dM", diskSizeInMb), vmdk)
+				cmd := exec.Command(v.exeVdiskManager, "-x", fmt.Sprintf("%dMB", diskSizeInMb), vmdk)
 				exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
 
 				if exitCode != 0 {
@@ -293,25 +295,16 @@ func (v *VmrunExe) clone(template *VirtualMachine, name string) (newpath string,
 }
 
 func (v *VmrunExe) prepareVMX(request *CreateVirtualMachine, vmxpath string, vmx *utils.VMXMap) (string, error) {
+	vmx.Cleanup()
+
 	vmx.Set("vmname", request.Name)
 	vmx.Set("numvcpus", strconv.Itoa(request.Vcpus))
 	vmx.Set("memsize", strconv.Itoa(request.Memory))
 
-	vmx.Delete("instance-id")
-	vmx.Delete("hostname")
-	vmx.Delete("seedfrom")
-	vmx.Delete("public-keys")
-	vmx.Delete("user-data")
-	vmx.Delete("password")
-
-	for k, v := range request.GuestInfos {
-		vmx.Set(k, v)
-	}
-
-	// Remove ethernet cards
-	for _, key := range vmx.Keys() {
-		if strings.HasPrefix(key, "ethernet") {
-			vmx.Delete(key)
+	// Set new guest infos
+	if request.GuestInfos != nil {
+		for k, v := range request.GuestInfos {
+			vmx.Set("guestinfo."+k, v)
 		}
 	}
 
@@ -330,6 +323,14 @@ func (v *VmrunExe) prepareVMX(request *CreateVirtualMachine, vmxpath string, vmx
 		vmx.Set(ethernet+"connectionType", inf.ConnectionType)
 		vmx.Set(ethernet+"linkStatePropagation.enable", "TRUE")
 		vmx.Set(ethernet+"pciSlotNumber", pcislotnumber[card])
+
+		if inf.BsdName != "" {
+			vmx.Set(ethernet+"bsdName", inf.BsdName)
+		}
+
+		if inf.DisplayName != "" {
+			vmx.Set(ethernet+"displayName", inf.DisplayName)
+		}
 
 		if inf.ConnectionType == "custom" {
 			vmx.Set(ethernet+"vnet", inf.Vnet)
