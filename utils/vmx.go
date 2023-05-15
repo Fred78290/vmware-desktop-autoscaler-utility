@@ -114,7 +114,7 @@ func (vmx *VMXMap) Load(vmxpath string) error {
 }
 
 func (vmx *VMXMap) Save(vmxpath string) error {
-	if file, err := os.OpenFile(vmxpath, os.O_WRONLY, 0644); err != nil {
+	if file, err := os.OpenFile(vmxpath, os.O_WRONLY|os.O_TRUNC, 0644); err != nil {
 		return err
 	} else {
 		datawriter := bufio.NewWriter(file)
