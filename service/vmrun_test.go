@@ -12,6 +12,7 @@ import (
 	apiclient "github.com/Fred78290/vmrest-go-client/client"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/service"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/settings"
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utils"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/utility"
 )
@@ -32,7 +33,7 @@ type ConfigTest struct {
 }
 
 func (c *ConfigTest) buildCloudInit() (desktop.GuestInfos, error) {
-	return desktop.BuildCloudInit(c.Hostname, c.Username, c.AuthKey, c.CloudInit, &c.Network, c.NodeIndex)
+	return desktop.BuildCloudInit(c.Hostname, c.Username, c.AuthKey, c.CloudInit, &c.Network, c.NodeIndex, false)
 }
 
 func (c *ConfigTest) buildNetworkInterface() []*service.NetworkInterface {
@@ -78,6 +79,16 @@ func parseURL(urlStr string) (*url.URL, error) {
 	}
 
 	return url.Parse(urlStr)
+}
+
+func waitForPowerState(vmrun service.Vmrun, vmuuid string, wanted bool) error {
+	return utils.PollImmediate(time.Second, 0, func() (bool, error) {
+		if status, err := vmrun.Status(vmuuid); err != nil {
+			return false, err
+		} else {
+			return status.Powered == wanted, nil
+		}
+	})
 }
 
 func TestCreateVM(t *testing.T) {
@@ -140,8 +151,12 @@ func TestCreateVM(t *testing.T) {
 
 			if vm, err := vmrun.Create(&request); err != nil {
 				failOnError(vm, "failed to create vm: %v", err)
+			} else if _, err := vmrun.Status(vm.Uuid); err != nil {
+				failOnError(vm, "failed to get status vm: %v", err)
 			} else if _, err := vmrun.PowerOn(vm.Uuid); err != nil {
 				failOnError(vm, "failed to poweron vm: %v", err)
+			} else if err = waitForPowerState(vmrun, vm.Uuid, true); err != nil {
+				failOnError(vm, "failed to wait poweroff vm: %v", err)
 			} else if _, err := vmrun.WaitForToolsRunning(vm.Uuid); err != nil {
 				failOnError(vm, "failed to wait tools vm: %v", err)
 			} else if _, err := vmrun.WaitForIP(vm.Uuid); err != nil {
@@ -150,6 +165,8 @@ func TestCreateVM(t *testing.T) {
 				failOnError(vm, "failed to get status vm: %v", err)
 			} else if _, err := vmrun.PowerOff(vm.Uuid); err != nil {
 				failOnError(vm, "failed to poweroff vm: %v", err)
+			} else if err = waitForPowerState(vmrun, vm.Uuid, false); err != nil {
+				failOnError(vm, "failed to wait poweroff vm: %v", err)
 			} else if _, err := vmrun.Delete(vm.Uuid); err != nil {
 				failOnError(vm, "failed to delete vm: %v", err)
 			}

@@ -33,12 +33,10 @@ cloud.google.com/go/storage v1.10.0/go.mod h1:FLPqc6j+Ki4BU591ie1oL6qBQGu2Bl/tZ9
 dmitri.shuralyov.com/gpu/mtl v0.0.0-20190408044501-666a987793e9/go.mod h1:H6x//7gZCb22OMCxBHrMx7a5I7Hp++hsVxbQ4BYO7hU=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
-github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230514092255-83622c372bcf h1:NwENNpbdUJj5Wl+8J4fIs6Nd1s05+imJmB3uAlRx4/Q=
-github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230514092255-83622c372bcf/go.mod h1:YMVbf8fgYxkGySlCTCWJb3S/2n622OLWh8BFp4Qo2GM=
-github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230514100554-7f36c64092d5 h1:/L6XZf1CZPROofLF9efMJxR0wyIzRnybLkSW1EKigeU=
-github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230514100554-7f36c64092d5/go.mod h1:YMVbf8fgYxkGySlCTCWJb3S/2n622OLWh8BFp4Qo2GM=
 github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230514134200-8e2974d08e01 h1:4DV3CZCqsEsxZ/ll8emOpvYpelI02Et0zWI6c//u6zs=
 github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230514134200-8e2974d08e01/go.mod h1:YMVbf8fgYxkGySlCTCWJb3S/2n622OLWh8BFp4Qo2GM=
+github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230515115730-f8b431e79644 h1:HpUeMD/RiJekedU2fWbPEsuUGZQidy+azNuLUZod2UQ=
+github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230515115730-f8b431e79644/go.mod h1:YMVbf8fgYxkGySlCTCWJb3S/2n622OLWh8BFp4Qo2GM=
 github.com/Fred78290/vmrest-go-client v0.1.2 h1:Rvl0RA7xiCNedI7JTZZ1rt4PAEgTyMIFoYjTwObPlJY=
 github.com/Fred78290/vmrest-go-client v0.1.2/go.mod h1:Kb/PK+CoaNY/Iq2bIpMnZ5J7rrZBivlZMT3kuBCMj4A=
 github.com/Masterminds/goutils v1.1.0/go.mod h1:8cTjp+g8YejhMuvIA5y2vz3BpJxksy863GQaJW2MFNU=
@@ -284,6 +282,7 @@ github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
 github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
+github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e h1:fD57ERR4JtEqsWbfPhv4DMiApHyliiK5xCTNVSPiaAs=
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e/go.mod h1:zD1mROLANZcx1PVRCS0qkT7pwLkGfwJo4zjcN/Tysno=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
@@ -650,6 +649,7 @@ gopkg.in/alecthomas/kingpin.v2 v2.2.6/go.mod h1:FMv+mEhP44yOT+4EoQTLFTRgOQ1FBLks
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f h1:BLraFXnmrev5lT+xlilqcH8XK9/i0At2xKjWk4p6zsU=
 gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/errgo.v2 v2.1.0/go.mod h1:hNsd1EY+bozCKY1Ytp96fpM3vjJbqLJn88ws8XvfDNI=
 gopkg.in/inf.v0 v0.9.1 h1:73M5CoZyi3ZLMOyDlQh031Cx6N9NDJ2Vvfl76EDAgDc=

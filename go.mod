@@ -3,7 +3,7 @@ module github.com/Fred78290/vmware-desktop-autoscaler-utility
 go 1.19
 
 require (
-	github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230514134200-8e2974d08e01 // indirect
+	github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230515115730-f8b431e79644
 	github.com/Fred78290/vmrest-go-client v0.1.2
 	github.com/hashicorp/go-hclog v0.16.1
 	github.com/hashicorp/go-retryablehttp v0.7.0
@@ -52,6 +52,7 @@ require (
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/kr/pretty v0.2.0 // indirect
 	github.com/linki/instrumented_http v0.3.0 // indirect
 	github.com/mailru/easyjson v0.7.6 // indirect
 	github.com/mattn/go-colorable v0.1.8 // indirect

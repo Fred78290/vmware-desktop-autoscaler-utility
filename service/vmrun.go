@@ -459,12 +459,14 @@ func (v *VmrunExe) ShutdownGuest(vmuuid string) (bool, error) {
 
 func (v *VmrunExe) getNicAddress(macaddress string, stack *model.NicIpStackAll) string {
 
-	for _, nic := range stack.Nics {
-		if nic.Mac == macaddress {
-			for _, address := range nic.Ip {
-				if ip, err := netip.ParseAddr(strings.Split(address, "/")[0]); err == nil {
-					if ip.Is4() {
-						return ip.String()
+	if stack != nil && stack.Nics != nil {
+		for _, nic := range stack.Nics {
+			if nic.Mac == macaddress {
+				for _, address := range nic.Ip {
+					if ip, err := netip.ParseAddr(strings.Split(address, "/")[0]); err == nil {
+						if ip.Is4() {
+							return ip.String()
+						}
 					}
 				}
 			}
@@ -474,12 +476,27 @@ func (v *VmrunExe) getNicAddress(macaddress string, stack *model.NicIpStackAll) 
 	return ""
 }
 
+func (v *VmrunExe) GetNicInfo(vmuuid string) (nics *model.NicIpStackAll, err error) {
+
+	if nics, err = v.client.GetNicInfo(vmuuid); err != nil {
+		if ge, ok := err.(client.GenericSwaggerError); ok {
+			if me, ok := ge.Model().(model.ErrorModel); ok {
+				if me.Code == 106 {
+					return nics, nil
+				}
+			}
+		}
+	}
+
+	return
+}
+
 func (v *VmrunExe) Status(vmuuid string) (*VirtualMachineStatus, error) {
 	if vm, err := v.VirtualMachineByUUID(vmuuid); err != nil {
 		return nil, err
 	} else if vmx, err := utils.LoadVMX(vm.Path); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "can't load vmx for %s", vm.Path)
-	} else if nics, err := v.client.GetNicInfo(vmuuid); err != nil {
+	} else if nics, err := v.GetNicInfo(vmuuid); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "can't get nics for vm %s, reason: %v", vm.Path, err)
 	} else {
 		card := 0
