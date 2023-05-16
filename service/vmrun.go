@@ -71,6 +71,7 @@ type Vmrun interface {
 	Delete(vmuuid string) (bool, error)
 	PowerOn(vmuuid string) (bool, error)
 	PowerOff(vmuuid string) (bool, error)
+	PowerState(vmuuid string) (bool, error)
 	ShutdownGuest(vmuuid string) (bool, error)
 	Status(vmuuid string) (*VirtualMachineStatus, error)
 	WaitForIP(vmuuid string) (string, error)
@@ -130,33 +131,68 @@ func (v *VmrunExe) SetApiClient(client *client.APIClient) {
 	v.client = client
 }
 
-func (v *VmrunExe) fetchVM(vmuuid, vmx string) (*VirtualMachine, error) {
-	if info, err := v.client.GetVM(vmuuid); err != nil {
-		return nil, err
-	} else if power, err := v.client.GetPowerState(vmuuid); err != nil {
-		return nil, err
-	} else if name, err := v.client.GetVMParams(vmuuid, "vmname"); err != nil {
-		return nil, err
-	} else if ip, err := v.client.GetIPAddress(vmuuid); err != nil {
-		return &VirtualMachine{
-			Path:    vmx,
-			Uuid:    vmuuid,
-			Name:    name.Value,
-			Vcpus:   info.Cpu.Processors,
-			Memory:  info.Memory,
-			Powered: strings.ToLower(power.PowerState) == "poweredon",
-		}, nil
-	} else {
-		return &VirtualMachine{
-			Path:    vmx,
-			Uuid:    vmuuid,
-			Name:    name.Value,
-			Vcpus:   info.Cpu.Processors,
-			Memory:  info.Memory,
-			Powered: strings.ToLower(power.PowerState) == "poweredon",
-			Address: ip.Ip,
-		}, nil
+func (v *VmrunExe) cacheVM(vm *VirtualMachine) {
+	v.cachebyuuid[vm.Uuid] = vm
+	v.cachebyvmx[vm.Path] = vm
+	v.cachebyname[vm.Name] = vm
+}
+
+func (v *VmrunExe) deleteCachedVM(vm *VirtualMachine) {
+	delete(v.cachebyuuid, vm.Uuid)
+	delete(v.cachebyvmx, vm.Path)
+	delete(v.cachebyname, vm.Name)
+}
+
+func (v *VmrunExe) stillExists(vm *VirtualMachine) bool {
+	if _, err := v.client.GetVM(vm.Uuid); err == nil {
+		return true
 	}
+
+	return false
+}
+
+func (v *VmrunExe) fetchIPAddress(vmuuid string) (ip *model.InlineResponse200, err error) {
+	if ip, err = v.client.GetIPAddress(vmuuid); err != nil {
+		if ge, ok := err.(client.GenericSwaggerError); ok {
+			if me, ok := ge.Model().(model.ErrorModel); ok {
+				if me.Code == 106 {
+					err = nil
+				}
+			}
+		}
+	}
+
+	return ip, err
+}
+
+func (v *VmrunExe) fetchVM(vmuuid, vmx string) (vm *VirtualMachine, err error) {
+	var info *model.VmInformation
+	var name *model.ConfigVmParamsParameter
+	var ip *model.InlineResponse200
+
+	vm = &VirtualMachine{
+		Path: vmx,
+		Uuid: vmuuid,
+	}
+
+	if info, err = v.client.GetVM(vmuuid); err == nil {
+
+		if name, err = v.client.GetVMParams(vmuuid, "vmname"); err == nil {
+			if ip, err = v.fetchIPAddress(vmuuid); err != nil {
+				return
+			} else if ip != nil {
+				vm.Address = ip.Ip
+			}
+
+			vm.Name = name.Value
+			vm.Vcpus = info.Cpu.Processors
+			vm.Memory = info.Memory
+
+			vm.Powered, err = v.isRunningVm(vm)
+		}
+	}
+
+	return
 }
 
 func (v *VmrunExe) registeredVM() error {
@@ -204,11 +240,8 @@ func (v *VmrunExe) RunningVms() ([]*VirtualMachine, error) {
 
 		for _, line := range strings.Split(out, "\n") {
 			line = strings.TrimSpace(line)
-			v.logger.Trace("vmrun path check", "path", line)
 
 			if vagrant_utility.FileExists(line) {
-				v.logger.Trace("vmrun path valid", "path", line)
-
 				if vm, found := v.cachebyvmx[line]; found {
 					result = append(result, vm)
 				}
@@ -219,13 +252,28 @@ func (v *VmrunExe) RunningVms() ([]*VirtualMachine, error) {
 	}
 }
 
-func (v *VmrunExe) isRunningVm(vmuuid string) (bool, error) {
+func (v *VmrunExe) isRunningVm(vm *VirtualMachine) (bool, error) {
 
-	if power, err := v.client.GetPowerState(vmuuid); err != nil {
-		return false, err
-	} else {
-		return strings.ToLower(power.PowerState) == "poweredon", nil
+	cmd := exec.Command(v.exePath, "list")
+	exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
+
+	if exitCode != 0 {
+		v.logger.Debug("vmrun list failed", "exitcode", exitCode)
+		v.logger.Trace("vmrun list failed", "output", out)
+
+		return false, status.Errorf(codes.Internal, "failed to list running VMs")
 	}
+
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == vm.Path {
+			return true, nil
+		}
+	}
+
+	v.logger.Trace("vm not running", "path", vm.Path)
+
+	return false, nil
 }
 
 func (v *VmrunExe) createVmPath(name string) (string, error) {
@@ -349,6 +397,7 @@ func (v *VmrunExe) prepareVMX(request *CreateVirtualMachine, vmxpath string, vmx
 	}
 
 	if result, err := v.client.RegisterVM(&model.VmRegisterParameter{Name: request.Name, Path: vmxpath}); err != nil {
+		v.logger.Debug("failed to register vm", "name", request.Name, "path", vmxpath, "error", err)
 		return "", err
 	} else {
 		return result.Id, nil
@@ -391,6 +440,14 @@ func (v *VmrunExe) Delete(vmuuid string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (v *VmrunExe) PowerState(vmuuid string) (bool, error) {
+	if found, err := v.VirtualMachineByUUID(vmuuid); err != nil {
+		return false, status.Errorf(codes.NotFound, "failed to find VM: %s, reason: %v", vmuuid, err)
+	} else {
+		return found.Powered, nil
+	}
 }
 
 func (v *VmrunExe) PowerOn(vmuuid string) (bool, error) {
@@ -643,7 +700,7 @@ func (v *VmrunExe) VirtualMachineByName(vmname string) (foundVM *VirtualMachine,
 			}
 		}
 	} else {
-		if foundVM.Powered, err = v.isRunningVm(foundVM.Uuid); err != nil {
+		if foundVM.Powered, err = v.isRunningVm(foundVM); err != nil {
 			return foundVM, status.Errorf(codes.Unavailable, "failed to get power status for VM: %s, reason: %v", foundVM.Path, err)
 		}
 	}
@@ -666,20 +723,21 @@ func (v *VmrunExe) VirtualMachineByUUID(vmuuid string) (foundVM *VirtualMachine,
 					if foundVM, err = v.fetchVM(vmuuid, vm.Path); err != nil {
 						return nil, status.Errorf(codes.Internal, "error to fetch vm: %s, reason: %v", vmuuid, err)
 					} else {
-						v.cachebyuuid[vm.Id] = foundVM
-						v.cachebyvmx[vm.Path] = foundVM
-						v.cachebyname[foundVM.Name] = foundVM
-
+						v.cacheVM(foundVM)
 						break
 					}
 				}
 			}
 		}
 
-	} else {
-		if foundVM.Powered, err = v.isRunningVm(foundVM.Uuid); err != nil {
+	} else if v.stillExists(foundVM) {
+		if foundVM.Powered, err = v.isRunningVm(foundVM); err != nil {
 			return foundVM, status.Errorf(codes.Unavailable, "failed to get power status for VM: %s, reason: %v", vmuuid, err)
 		}
+	} else {
+		v.deleteCachedVM(foundVM)
+
+		foundVM = nil
 	}
 
 	if foundVM == nil {

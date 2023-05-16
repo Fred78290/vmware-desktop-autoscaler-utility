@@ -83,10 +83,10 @@ func parseURL(urlStr string) (*url.URL, error) {
 
 func waitForPowerState(vmrun service.Vmrun, vmuuid string, wanted bool) error {
 	return utils.PollImmediate(time.Second, 0, func() (bool, error) {
-		if status, err := vmrun.Status(vmuuid); err != nil {
+		if powered, err := vmrun.PowerState(vmuuid); err != nil {
 			return false, err
 		} else {
-			return status.Powered == wanted, nil
+			return powered == wanted, nil
 		}
 	})
 }
@@ -102,7 +102,7 @@ func TestCreateVM(t *testing.T) {
 		logger := hclog.New(&hclog.LoggerOptions{
 			Name:   "test",
 			Output: os.Stdout,
-			Level:  hclog.LevelFromString("trace"),
+			Level:  hclog.LevelFromString("debug"),
 		})
 
 		c := &settings.CommonConfig{

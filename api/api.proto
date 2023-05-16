@@ -13,6 +13,7 @@ service VMWareDesktopAutoscalerService {
 	rpc Delete(VirtualMachineRequest) returns (DeleteResponse) {}
 	rpc PowerOn(VirtualMachineRequest) returns (PowerOnResponse) {}
 	rpc PowerOff(VirtualMachineRequest) returns (PowerOffResponse) {}
+	rpc PowerState(VirtualMachineRequest) returns (PowerStateResponse) {}
 	rpc ShutdownGuest(VirtualMachineRequest) returns (ShutdownGuestResponse) {}
 	rpc Status(VirtualMachineRequest) returns (StatusResponse) {}
 	rpc WaitForIP(VirtualMachineRequest) returns (WaitForIPResponse) {}
@@ -131,6 +132,13 @@ message PowerOffResponse {
 	oneof response {
 		ClientError error = 1;
 		PowerOffReply result = 2;
+	}
+}
+
+message PowerStateResponse {
+	oneof response {
+		ClientError error = 1;
+		bool powered = 2;
 	}
 }
 
