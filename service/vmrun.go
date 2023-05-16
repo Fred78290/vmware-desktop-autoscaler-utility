@@ -618,6 +618,11 @@ func (v *VmrunExe) WaitForIP(vmuuid string) (string, error) {
 			exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
 
 			if exitCode != 0 {
+				// Got it on linux
+				if strings.HasPrefix(out, "Error: Unable to get the IP address") {
+					return false, nil
+				}
+
 				v.logger.Debug("vmrun getGuestIPAddress failed", "exitcode", exitCode)
 				v.logger.Trace("vmrun getGuestIPAddress failed", "output", out)
 

@@ -9,8 +9,9 @@ import (
 )
 
 type VMXMap struct {
-	vmx  map[string]string
-	keys map[string]string
+	headline string
+	vmx      map[string]string
+	keys     map[string]string
 }
 
 func (vmx *VMXMap) Cleanup() {
@@ -96,17 +97,26 @@ func (vmx *VMXMap) Load(vmxpath string) error {
 
 		fileScanner.Split(bufio.ScanLines)
 
+		count := 0
+
 		for fileScanner.Scan() {
 			line := fileScanner.Text()
 
-			if !strings.HasPrefix(line, ".encoding") {
+			if strings.HasPrefix(line, "#!") && count == 0 {
+				vmx.headline = line
+			} else if !strings.HasPrefix(line, ".encoding") && !strings.HasPrefix(line, "#") {
 				segments := strings.Split(line, "=")
-				key := strings.TrimSpace(segments[0])
-				value := strings.Trim(strings.TrimSpace(segments[1]), "\"")
 
-				vmx.vmx[key] = value
-				vmx.keys[strings.ToLower(key)] = key
+				if len(segments) == 2 {
+					key := strings.TrimSpace(segments[0])
+					value := strings.Trim(strings.TrimSpace(segments[1]), "\"")
+
+					vmx.vmx[key] = value
+					vmx.keys[strings.ToLower(key)] = key
+				}
 			}
+
+			count++
 		}
 
 		return nil
@@ -118,6 +128,10 @@ func (vmx *VMXMap) Save(vmxpath string) error {
 		return err
 	} else {
 		datawriter := bufio.NewWriter(file)
+
+		if vmx.headline != "" {
+			datawriter.WriteString(fmt.Sprintf("%s\n", vmx.headline))
+		}
 
 		datawriter.WriteString(".encoding = \"UTF-8\"\n")
 
