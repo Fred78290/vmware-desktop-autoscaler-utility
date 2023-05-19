@@ -53,7 +53,7 @@ func CreateGrpc(bindAddr string, driver driver.Driver, logDisplay bool, ui cli.U
 		if u.Scheme == "unix" {
 			listen = u.Path
 		} else {
-			listen = u.Opaque
+			listen = u.Host
 		}
 
 		srv := &Grpc{
@@ -116,7 +116,7 @@ func (g *Grpc) Start() error {
 
 	defer g.actionSync.Unlock()
 
-	g.Infof("gRPC service start transport: %s, listen: %s", g.address, g.address)
+	g.Infof("gRPC service start transport: %s, listen: %s", g.transport, g.address)
 
 	server, err := g.createServer()
 
