@@ -26,6 +26,7 @@ type ConfigTest struct {
 	Username   string          `json:"username"`
 	Password   string          `json:"password"`
 	Template   string          `json:"template"`
+	TimeZone   string          `json:"time-zone"`
 	AuthKey    string          `json:"ssh-key"`
 	NodeIndex  int             `json:"node-index"`
 	CloudInit  interface{}     `json:"cloud-init"`
@@ -33,7 +34,7 @@ type ConfigTest struct {
 }
 
 func (c *ConfigTest) buildCloudInit() (desktop.GuestInfos, error) {
-	return desktop.BuildCloudInit(c.Hostname, c.Username, c.AuthKey, c.CloudInit, &c.Network, c.NodeIndex, false)
+	return desktop.BuildCloudInit(c.Hostname, c.Username, c.AuthKey, c.TimeZone, c.CloudInit, &c.Network, c.NodeIndex, false)
 }
 
 func (c *ConfigTest) buildNetworkInterface() []*service.NetworkInterface {

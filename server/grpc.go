@@ -362,6 +362,33 @@ func (g *Grpc) PowerOff(ctx context.Context, req *api.VirtualMachineRequest) (*a
 	}
 }
 
+func (g *Grpc) PowerState(ctx context.Context, req *api.VirtualMachineRequest) (*api.PowerStateResponse, error) {
+	g.incrementInflight()
+
+	defer g.decrementInflight()
+
+	if result, err := g.vmrun.PowerState(req.Identifier); err != nil {
+		if _, ok := status.FromError(err); ok {
+			return nil, err
+		}
+
+		return &api.PowerStateResponse{
+			Response: &api.PowerStateResponse_Error{
+				Error: &api.ClientError{
+					Code:   404,
+					Reason: err.Error(),
+				},
+			},
+		}, nil
+	} else {
+		return &api.PowerStateResponse{
+			Response: &api.PowerStateResponse_Powered{
+				Powered: result,
+			},
+		}, nil
+	}
+}
+
 func (g *Grpc) ShutdownGuest(ctx context.Context, req *api.VirtualMachineRequest) (*api.ShutdownGuestResponse, error) {
 	g.incrementInflight()
 
@@ -415,6 +442,7 @@ func (g *Grpc) Status(ctx context.Context, req *api.VirtualMachineRequest) (*api
 		for _, ether := range result.EthernetCards {
 			networks = append(networks, &api.Ethernet{
 				AddressType:            ether.AddressType,
+				Address:                ether.IP4Address,
 				BsdName:                ether.BsdName,
 				ConnectionType:         ether.ConnectionType,
 				DisplayName:            ether.DisplayName,

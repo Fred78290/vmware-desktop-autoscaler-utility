@@ -59,6 +59,7 @@ func (a *Api) defineRoutes(r *RegexpHandler) error {
 		`/vm/delete/(?P<vmuuid>.+)`:                              r.handleDeleteVirtualMachine,
 		`/vm/poweron/(?P<vmuuid>.+)`:                             r.handlePowerOnVirtualMachine,
 		`/vm/poweroff/(?P<vmuuid>.+)`:                            r.handlePowerOffVirtualMachine,
+		`/vm/powerstate/(?P<vmuuid>.+)`:                          r.handlePowerStateVirtualMachine,
 		`/vm/shutdownguest/(?P<vmuuid>.+)`:                       r.handleShutdownGuestVirtualMachine,
 		`/vm/waitforip/(?P<vmuuid>.+)`:                           r.handleWaitForIP,
 		`/vm/waitfortoolsrunning/(?P<vmuuid>.+)`:                 r.handleWaitForToolsRunning,

@@ -33,14 +33,16 @@ var hopHeaders = []string{
 	"Upgrade",
 }
 
-func newResponseWithKeyValue(keyvalues ...string) RestResponse {
-	result := make(map[string]string)
+func newResponseWithKeyValue(keyvalues ...interface{}) RestResponse {
+	result := make(map[string]interface{})
 
 	for i := 0; i < len(keyvalues); i += 2 {
 		key := keyvalues[i]
 		value := keyvalues[i+1]
 
-		result[key] = value
+		strKey := key.(string)
+
+		result[strKey] = value
 	}
 
 	return RestResponse{
@@ -164,7 +166,7 @@ func (r *RegexpHandler) handleCreateVirtualMachine(wr http.ResponseWriter, req *
 		if done, err := r.vmrun.Delete(params["vmuuid"]); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), http.StatusOK)
+			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -183,7 +185,7 @@ func (r *RegexpHandler) handleDeleteVirtualMachine(wr http.ResponseWriter, req *
 		if done, err := r.vmrun.Delete(params["vmuuid"]); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), http.StatusOK)
+			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -202,7 +204,7 @@ func (r *RegexpHandler) handlePowerOnVirtualMachine(wr http.ResponseWriter, req 
 		if done, err := r.vmrun.PowerOn(params["vmuuid"]); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), http.StatusOK)
+			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -221,7 +223,26 @@ func (r *RegexpHandler) handlePowerOffVirtualMachine(wr http.ResponseWriter, req
 		if done, err := r.vmrun.PowerOff(params["vmuuid"]); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), http.StatusOK)
+			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
+		}
+	} else {
+		r.notFound(wr)
+	}
+}
+
+func (r *RegexpHandler) handlePowerStateVirtualMachine(wr http.ResponseWriter, req *http.Request) {
+	params := r.pathParams(req.URL.Path)
+
+	if req.Method == "GET" {
+		r.netLock.Lock()
+		defer r.netLock.Unlock()
+
+		r.logger.Debug("vm power state", "vmuuid", params["vmuuid"])
+
+		if done, err := r.vmrun.PowerState(params["vmuuid"]); err != nil {
+			r.error(wr, err.Error(), http.StatusNotFound)
+		} else {
+			r.respond(wr, newResponseWithKeyValue("powered", done), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -240,7 +261,7 @@ func (r *RegexpHandler) handleShutdownGuestVirtualMachine(wr http.ResponseWriter
 		if done, err := r.vmrun.ShutdownGuest(params["vmuuid"]); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", utils.BoolToStr(done)), http.StatusOK)
+			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -297,7 +318,7 @@ func (r *RegexpHandler) handleWaitForToolsRunning(wr http.ResponseWriter, req *h
 		if running, err := r.vmrun.WaitForToolsRunning(params["vmuuid"]); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("running", utils.BoolToStr(running)), http.StatusOK)
+			r.respond(wr, newResponseWithKeyValue("running", running), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
@@ -316,7 +337,7 @@ func (r *RegexpHandler) handleSetAutoStart(wr http.ResponseWriter, req *http.Req
 		if autostart, err := r.vmrun.SetAutoStart(params["vmuuid"], params["autostart"] == "true"); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("autostart", utils.BoolToStr(autostart)), http.StatusOK)
+			r.respond(wr, newResponseWithKeyValue("autostart", autostart), http.StatusOK)
 		}
 	} else {
 		r.notFound(wr)
