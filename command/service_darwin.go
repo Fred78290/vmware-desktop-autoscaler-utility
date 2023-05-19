@@ -25,26 +25,14 @@ const LAUNCHD_JOB = `<?xml version="1.0" encoding="UTF-8"?>
     <key>ProgramArguments</key>
     <array>
         <string>%s</string>
-        <string>api</string>
-        <string>-port=%d</string>
+        <string>full</string>
         <string>-config-file=%s</string>
     </array>
-    <key>Sockets</key>
-    <dict>
-        <key>Listeners</key>
-        <dict>
-            <key>SockServiceName</key>
-            <string>127.0.0.1:%d</string>
-        </dict>
-    </dict>
     <key>KeepAlive</key>
-    <dict>
-        <key>PathState</key>
-        <dict>
-            <key>/Applications/VMware Fusion.app</key>
-                <true/>
-        </dict>
-    </dict>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
     <key>RunAtLoad</key>
         <true/>
     <key>StandardErrorPath</key>
@@ -66,95 +54,61 @@ const LAUNCHD_JOB = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `
 
-const LAUNCHD_STOP_JOB = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.aldunelabs.vmware-desktop-autoscaler-utility-stopper</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/bin/launchctl</string>
-        <string>stop</string>
-        <string>com.aldunelabs.vmware-desktop-autoscaler-utility</string>
-    </array>
-    <key>KeepAlive</key>
-    <dict>
-        <key>PathState</key>
-        <dict>
-            <key>/Applications/VMware Fusion.app</key>
-              <false/>
-        </dict>
-    </dict>
-    <key>RunAtLoad</key>
-        <true/>
-</dict>
-</plist>
-`
+var LAUNCHD_JOB_PATH = "%s/Library/LaunchAgents/com.aldunelabs.vmware-desktop-autoscaler-utility.plist"
+var SERVICE_CONFIGURATION_FILE = "%s/Library/Application Support/vmware-desktop-autoscaler-utility/config.hcl"
+var SERVICE_LOG_FILE = "%s/Library/Application Support/vmware-desktop-autoscaler-utility/service.log"
 
-const LAUNCHD_STOP_JOB_PATH = `/Library/LaunchDaemons/com.aldunelabs.vmware-desktop-autoscaler-utility-stopper.plist`
-const LAUNCHD_JOB_PATH = `/Library/LaunchDaemons/com.aldunelabs.vmware-desktop-autoscaler-utility.plist`
-const SERVICE_CONFIGURATION_FILE = `/Library/Application Support/vmware-desktop-autoscaler-utility/config.hcl`
-const SERVICE_LOG_FILE = `/Library/Application Support/vmware-desktop-autoscaler-utility/service.log`
+func init() {
+	homeDir, _ := os.UserHomeDir()
+
+	LAUNCHD_JOB_PATH = fmt.Sprintf(LAUNCHD_JOB_PATH, homeDir)
+	SERVICE_CONFIGURATION_FILE = fmt.Sprintf(SERVICE_CONFIGURATION_FILE, homeDir)
+	SERVICE_LOG_FILE = fmt.Sprintf(SERVICE_LOG_FILE, homeDir)
+}
 
 func (c *ServiceInstallCommand) install() error {
 	if vagrant_utility.FileExists(LAUNCHD_JOB_PATH) {
 		return errors.New("service is already installed")
 	}
+
 	exePath, err := os.Executable()
 	if err != nil {
 		c.logger.Error("failed to determine executable path", "error", err)
 		return errors.New("failed to determine executable path")
 	}
-	config, err := c.writeConfig("")
+
+	config, err := c.writeConfig(SERVICE_CONFIGURATION_FILE)
 	if err != nil {
 		c.logger.Error("failed to create service configuration", "error", err)
 		return err
 	}
+
 	launchctl, err := service.NewLaunchctl(c.logger)
 	if err != nil {
 		c.logger.Debug("launchctl service creation failure", "error", err)
 		return err
 	}
+
 	c.logger.Trace("create service file", "path", LAUNCHD_JOB_PATH)
 	lfile, err := os.Create(LAUNCHD_JOB_PATH)
 	if err != nil {
 		c.logger.Debug("create service file failure", "path", LAUNCHD_JOB_PATH, "error", err)
 		return err
 	}
+
 	defer lfile.Close()
-	port := c.Config.Port
-	_, err = lfile.WriteString(fmt.Sprintf(LAUNCHD_JOB, exePath, port,
-		config, port, SERVICE_LOG_FILE, SERVICE_LOG_FILE))
-	if err != nil {
+
+	if _, err = lfile.WriteString(fmt.Sprintf(LAUNCHD_JOB, exePath, config, SERVICE_LOG_FILE, SERVICE_LOG_FILE)); err != nil {
 		c.logger.Debug("service file write failure", "path", LAUNCHD_JOB_PATH, "error", err)
 		return err
 	}
-	lfile.Close()
-	sfile, err := os.Create(LAUNCHD_STOP_JOB_PATH)
-	if err != nil {
-		c.logger.Debug("create service stop file failure", "path", LAUNCHD_STOP_JOB_PATH, "error", err)
-		return err
-	}
-	defer sfile.Close()
-	_, err = sfile.WriteString(LAUNCHD_STOP_JOB)
-	if err != nil {
-		c.logger.Debug("service file write failure", "path", LAUNCHD_STOP_JOB_PATH, "error", err)
-		return err
-	}
-	sfile.Close()
+
 	c.logger.Trace("loading service", "path", LAUNCHD_JOB_PATH)
-	err = launchctl.Load(LAUNCHD_JOB_PATH)
-	if err != nil {
+	if err = launchctl.Load(LAUNCHD_JOB_PATH); err != nil {
 		c.logger.Debug("service load failure", "path", LAUNCHD_JOB_PATH, "error", err)
 		return err
 	}
-	c.logger.Trace("loading stopper service", "path", LAUNCHD_STOP_JOB_PATH)
-	err = launchctl.Load(LAUNCHD_STOP_JOB_PATH)
-	if err != nil {
-		c.logger.Debug("service load failure", "path", LAUNCHD_STOP_JOB_PATH, "error", err)
-		return err
-	}
+
 	return nil
 }
 
@@ -167,34 +121,25 @@ func (c *ServiceUninstallCommand) uninstall() error {
 		c.logger.Warn("service is not currently installed")
 		return nil
 	}
+
 	launchctl, err := service.NewLaunchctl(c.logger)
+
 	if err != nil {
 		c.logger.Debug("launchctl service creation failure", "error", err)
 		return err
 	}
+
 	c.logger.Trace("unloading service", "path", LAUNCHD_JOB_PATH)
-	err = launchctl.Unload(LAUNCHD_JOB_PATH)
-	if err != nil {
+	if err = launchctl.Unload(LAUNCHD_JOB_PATH); err != nil {
 		c.logger.Debug("service unload failure", "path", LAUNCHD_JOB_PATH, "error", err)
 		return err
 	}
+
 	c.logger.Trace("removing service file", "path", LAUNCHD_JOB_PATH)
-	err = os.Remove(LAUNCHD_JOB_PATH)
-	if err != nil {
+	if err = os.Remove(LAUNCHD_JOB_PATH); err != nil {
 		c.logger.Debug("service file remove failure", "path", LAUNCHD_JOB_PATH, "error", err)
 		return err
 	}
-	c.logger.Trace("unloading stopper service", "path", LAUNCHD_STOP_JOB_PATH)
-	err = launchctl.Unload(LAUNCHD_STOP_JOB_PATH)
-	if err != nil {
-		c.logger.Debug("service stopper unload failure", "path", LAUNCHD_STOP_JOB_PATH, "error", err)
-		return err
-	}
-	c.logger.Trace("removing service stopper file", "path", LAUNCHD_STOP_JOB_PATH)
-	err = os.Remove(LAUNCHD_STOP_JOB_PATH)
-	if err != nil {
-		c.logger.Debug("service file remove failure", "path", LAUNCHD_STOP_JOB_PATH, "error", err)
-		return err
-	}
+
 	return nil
 }

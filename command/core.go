@@ -52,24 +52,15 @@ type Command struct {
 }
 
 type Config struct {
-	Debug     bool
-	Level     string
-	LogFile   string
-	LogAppend bool
-
-	Pdebug     *bool   `hcl:"debug"`
-	Plevel     *string `hcl:"level"`
-	PlogFile   *string `hcl:"log_file"`
-	PlogAppend *bool   `hcl:"log_append"`
-
-	configFile *ConfigFile
-}
-
-type ConfigFile struct {
-	*Config               `hcl:"core,block"`
-	*RestApiConfig        `hcl:"api,block"`
-	*GrpcApiConfig        `hcl:"grpc,block"`
-	*ServiceInstallConfig `hcl:"service,block"`
+	Debug      bool
+	Level      string
+	LogFile    string
+	LogAppend  bool
+	Pdebug     *bool                 `hcl:"debug"`
+	Plevel     *string               `hcl:"level"`
+	PlogFile   *string               `hcl:"log_file"`
+	PlogAppend *bool                 `hcl:"log_append"`
+	ConfigFile *ServiceInstallConfig `hcl:"service,block"`
 }
 
 func (c *Command) Help() string {
@@ -112,18 +103,17 @@ func (c *Command) defaultSetup(args []string) (err error) {
 
 // Loads the default configuration values
 func (c *Command) loadConfig() *Config {
+	var fc Config
+
 	config := &Config{}
-	file := &ConfigFile{}
+
 	// Check if we have a configuration file to load and do that first
 	path := c.GetConfigValue("config_file", nil)
-	if path != "" {
-		c.loadConfigFile(path, file)
-		c.DefaultConfig.configFile = file
-	}
 
-	var fc Config
-	if file.Config != nil {
-		fc = *file.Config
+	if path != "" {
+		c.loadConfigFile(path, &fc)
+		c.DefaultConfig.ConfigFile = fc.ConfigFile
+		config.ConfigFile = fc.ConfigFile
 	}
 
 	config.Debug = c.GetConfigBool("debug", fc.Pdebug)
@@ -135,7 +125,7 @@ func (c *Command) loadConfig() *Config {
 }
 
 // Loads a configuration file and processes root configuration
-func (c *Command) loadConfigFile(path string, config *ConfigFile) {
+func (c *Command) loadConfigFile(path string, config *Config) {
 	f, err := os.Open(path)
 	if err != nil {
 		configurationError("Failed to open configuration - %s", err)

@@ -39,6 +39,37 @@
 				"generate"
 			]
 		},
+		{
+			"name": "Install service",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+            "program": "${workspaceFolder}",
+            "cwd": "${env:HOME}/go/src/github.com/Fred78290/vmware-desktop-autoscaler-utility",
+			"env": {
+
+			},
+			"args": [
+				"service",
+				"install",
+				"--vmrest=https://fboltz:${env:GOVC_PASSWORD}@localhost.aldunelabs.com:8697/"
+			]
+		},
+		{
+			"name": "Run service",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+            "program": "${workspaceFolder}",
+            "cwd": "${env:HOME}/go/src/github.com/Fred78290/vmware-desktop-autoscaler-utility",
+			"env": {
+
+			},
+			"args": [
+				"full",
+				"--config-file=/Users/fboltz/Library/Application Support/vmware-desktop-autoscaler-utility/config.hcl"
+			]
+		},
         {
             "name": "Test Package",
             "type": "go",

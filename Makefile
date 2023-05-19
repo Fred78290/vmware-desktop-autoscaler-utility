@@ -23,7 +23,7 @@ deps:
 build: $(addprefix build-arch-,$(ALL_ARCH))
 
 build-arch-%: deps clean-arch-%
-	$(ENVVAR) GOOS=$(GOOS) GOARCH=$* go build -buildvcs=false -ldflags="-X version.VERSION=$(TAG) -X version.BUILD_DATE=$(BUILD_DATE) ${LDFLAGS}" -a -o out/$(GOOS)/$*/vmware-desktop-autoscaler-utility
+	$(ENVVAR) GOOS=$(GOOS) GOARCH=$* go build -buildvcs=false -ldflags="-X github.com/Fred78290/vmware-desktop-autoscaler-utility/version.VERSION=$(TAG) -X github.com/Fred78290/vmware-desktop-autoscaler-utility/version.BUILD_DATE=$(BUILD_DATE) ${LDFLAGS}" -a -o out/$(GOOS)/$*/vmware-desktop-autoscaler-utility
 
 test-unit: clean build
 	bash ./scripts/run-tests.sh
@@ -70,4 +70,8 @@ test-in-docker: docker-builder
 	docker run --rm -v `pwd`:/gopath/src/github.com/Fred78290/vmware-desktop-autoscaler-utility/ vmware-desktop-autoscaler-utility-builder:latest bash \
 		-c 'cd /gopath/src/github.com/Fred78290/vmware-desktop-autoscaler-utility && bash ./scripts/run-tests.sh'
 
-.PHONY: all build test-unit clean docker-builder build-in-docker push-image push-manifest
+install: build-arch-$(GOARCH)
+	$(ENVVAR) cp out/$(GOOS)/$(GOARCH)/vmware-desktop-autoscaler-utility /usr/local/bin
+	vmware-desktop-autoscaler-utility version
+
+.PHONY: all build test-unit clean docker-builder build-in-docker push-image push-manifest install

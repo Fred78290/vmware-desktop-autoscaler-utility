@@ -54,14 +54,14 @@ func (c *ServiceUninstallCommand) Run(args []string) int {
 }
 
 func (c *ServiceUninstallCommand) setup(args []string) (err error) {
-	err = c.defaultSetup(args)
-	if err != nil {
+	var sc ServiceInstallConfig
+
+	if err = c.defaultSetup(args); err != nil {
 		return
 	}
 
-	var sc ServiceInstallConfig
-	if c.DefaultConfig.configFile != nil {
-		sc = *c.DefaultConfig.configFile.ServiceInstallConfig
+	if c.DefaultConfig.ConfigFile != nil {
+		sc = *c.DefaultConfig.ConfigFile
 	}
 
 	if runtime.GOOS != "windows" {

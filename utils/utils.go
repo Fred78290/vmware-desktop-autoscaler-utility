@@ -23,6 +23,14 @@ func ToJSON(v interface{}) string {
 	return string(b)
 }
 
+func FromJSON(data []byte, v interface{}) error {
+	if v == nil {
+		return fmt.Errorf("recipient is nil")
+	}
+
+	return json.Unmarshal(data, v)
+}
+
 func BoolToStr(value bool) string {
 	if value {
 		return "true"

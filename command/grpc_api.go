@@ -219,8 +219,8 @@ func (c *GrpcApiCommand) setup(args []string) (err error) {
 
 		var rc GrpcApiConfig
 
-		if c.DefaultConfig.configFile != nil && c.DefaultConfig.configFile.GrpcApiConfig != nil {
-			rc = *c.DefaultConfig.configFile.GrpcApiConfig
+		if c.DefaultConfig.ConfigFile != nil {
+			rc.CommonConfig = c.DefaultConfig.ConfigFile.CommonConfig
 		}
 
 		c.Config.Listen = c.GetConfigValue("listen", rc.Plisten)

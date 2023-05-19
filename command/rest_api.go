@@ -189,8 +189,8 @@ func (c *RestApiCommand) setup(args []string) (err error) {
 
 	var rc RestApiConfig
 
-	if c.DefaultConfig.configFile != nil && c.DefaultConfig.configFile.RestApiConfig != nil {
-		rc = *c.DefaultConfig.configFile.RestApiConfig
+	if c.DefaultConfig.ConfigFile != nil {
+		rc.CommonConfig = c.DefaultConfig.ConfigFile.CommonConfig
 	}
 
 	c.Config.Address = c.GetConfigValue("address", rc.Paddress)
