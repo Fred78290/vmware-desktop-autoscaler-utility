@@ -47,10 +47,9 @@ jobs:
           cp out/darwin/arm64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-darwin-arm64
 
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v0.1.15
         with:
           tag_name: ${{ steps.prep.outputs.tag }}
-          token: ${{ secrets.GIT_PAT }}
           draft: false
           files: |
             vmware-desktop-autoscaler-utility-linux-amd64
