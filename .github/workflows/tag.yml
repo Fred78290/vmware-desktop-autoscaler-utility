@@ -5,7 +5,8 @@ on:
     tags:
       - v*
 env:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.GIT_PAT }}
+  GOPRIVATE: github.com/Fred78290/kubernetes-desktop-autoscaler
 
 jobs:
   deploy:

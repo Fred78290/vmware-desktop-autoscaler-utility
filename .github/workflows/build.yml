@@ -10,8 +10,10 @@ on:
     types: [opened, synchronize, reopened]
 
 env:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.GIT_PAT }}
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  GOPRIVATE: github.com/Fred78290/kubernetes-desktop-autoscaler
+  GIT_PAT: ${{ secrets.GIT_PAT }}
 
 jobs:
   build:
