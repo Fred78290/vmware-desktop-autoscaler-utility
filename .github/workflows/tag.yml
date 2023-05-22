@@ -5,7 +5,6 @@ on:
     tags:
       - v*
 env:
-  REGISTRY: ${{ secrets.REGISTRY }}
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
@@ -33,38 +32,16 @@ jobs:
         with:
           go-version: 1.20
 
-      - name: Test
-        shell: bash
-        run: |
-          IMAGE_TAG=${GITHUB_REF#refs/tags/}
-          make -e REGISTRY=$REGISTRY -e TAG="${IMAGE_TAG}" test-in-docker
-
-      - name: Prepare docker buildx
-        id: prep
-        shell: bash
-        run: |
-          IMAGE_TAG=${GITHUB_REF#refs/tags/}
-          echo "tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
-          docker buildx version;
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin;
-          docker context create builders
-
-      - name: Setup docker buildx
-        uses: docker/setup-buildx-action@v2.2.1
-        with:
-          version: latest
-          endpoint: builders
-          use: true
-
-      - name: Build docker image
+      - name: Build
         id: build
         shell: bash
         run: |
-          IMAGE_TAG=${GITHUB_REF#refs/tags/}
-          make -e REGISTRY=$REGISTRY -e TAG="${IMAGE_TAG}" container-push-manifest
-          sudo chown -R $USER out vendor
-          cp out/linux/amd64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-amd64
-          cp out/linux/arm64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-arm64
+          VERSION=${GITHUB_REF#refs/tags/}
+          make -e TAG="${VERSION}" all
+          cp out/linux/amd64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-linux-amd64
+          cp out/linux/arm64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-linux-arm64
+          cp out/darwin/amd64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-darwin-amd64
+          cp out/darwin/arm64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-darwin-arm64
 
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -72,5 +49,7 @@ jobs:
           tag_name: ${{ steps.prep.outputs.tag }}
           draft: false
           files: |
-            vmware-desktop-autoscaler-utility-amd64
-            vmware-desktop-autoscaler-utility-arm64
+            vmware-desktop-autoscaler-utility-linux-amd64
+            vmware-desktop-autoscaler-utility-linux-arm64
+            vmware-desktop-autoscaler-utility-darwin-amd64
+            vmware-desktop-autoscaler-utility-darwin-arm64

@@ -13,6 +13,7 @@ import (
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/service"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/settings"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utils"
+	"github.com/drone/envsubst"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/utility"
 )
@@ -65,11 +66,14 @@ func getConfFile() string {
 
 func loadConfig() (*ConfigTest, error) {
 	var config ConfigTest
+	var converted string
 
 	if configStr, err := os.ReadFile(getConfFile()); err != nil {
 		return nil, err
+	} else if converted, err = envsubst.EvalEnv(string(configStr)); err != nil {
+		return &config, err
 	} else {
-		err = json.Unmarshal(configStr, &config)
+		err = json.Unmarshal([]byte(converted), &config)
 		return &config, err
 	}
 }

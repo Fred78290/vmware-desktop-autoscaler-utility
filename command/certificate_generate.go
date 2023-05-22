@@ -91,7 +91,9 @@ func (c *CertificateGenerateCommand) setup(args []string) (err error) {
 
 	defaultValue := false
 
-	c.override = c.GetConfigBool("cert_override", &defaultValue)
+	if c.generate {
+		c.override = c.GetConfigBool("cert_override", &defaultValue)
+	}
 
 	return
 }
