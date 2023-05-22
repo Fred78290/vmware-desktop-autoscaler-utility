@@ -50,7 +50,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.prep.outputs.tag }}
-          token: $GIT_PAT
+          token: ${{ secrets.GIT_PAT }}
           draft: false
           files: |
             vmware-desktop-autoscaler-utility-linux-amd64
