@@ -45,6 +45,7 @@ jobs:
           cp out/linux/arm64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-linux-arm64
           cp out/darwin/amd64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-darwin-amd64
           cp out/darwin/arm64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-darwin-arm64
+          ls -l
 
       - name: Release
         uses: softprops/action-gh-release@v0.1.15
@@ -54,5 +55,3 @@ jobs:
           files: |
             vmware-desktop-autoscaler-utility-linux-amd64
             vmware-desktop-autoscaler-utility-linux-arm64
-            vmware-desktop-autoscaler-utility-darwin-amd64
-            vmware-desktop-autoscaler-utility-darwin-arm64
