@@ -5,6 +5,8 @@ on:
       - '*'
     tags:
       - '!*'
+    paths-ignore:
+      - '**.yml'
 
   pull_request:
     types: [opened, synchronize, reopened]

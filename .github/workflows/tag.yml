@@ -42,10 +42,10 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/}
           make -e TAG="${VERSION}" all
           sudo chown -R $USER out vendor
-          cp out/linux/amd64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-linux-amd64
-          cp out/linux/arm64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-linux-arm64
-          cp out/darwin/amd64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-darwin-amd64
-          cp out/darwin/arm64/vmware-desktop-autoscaler-utility vmware-desktop-autoscaler-utility-darwin-arm64
+          cp out/linux/amd64/vmware-desktop-autoscaler-utility vmware-autoscaler-util-linux-amd64
+          cp out/linux/arm64/vmware-desktop-autoscaler-utility vmware-autoscaler-util-linux-arm64
+          cp out/darwin/amd64/vmware-desktop-autoscaler-utility vmware-autoscaler-util-darwin-amd64
+          cp out/darwin/arm64/vmware-desktop-autoscaler-utility vmware-autoscaler-util-darwin-arm64
           ls -l
 
       - name: Release
@@ -55,7 +55,7 @@ jobs:
           draft: false
           fail_on_unmatched_files: true
           files: |
-            vmware-desktop-autoscaler-utility-linux-amd64
-            vmware-desktop-autoscaler-utility-linux-arm64
-            vmware-desktop-autoscaler-utility-darwin-amd64
-            vmware-desktop-autoscaler-utility-darwin-arm64
+            vmware-autoscaler-util-linux-amd64
+            vmware-autoscaler-util-linux-arm64
+            vmware-autoscaler-util-darwin-amd64
+            vmware-autoscaler-util-darwin-arm64
