@@ -178,6 +178,11 @@ func (v *vmrest) Cleanup() {
 				v.logger.Error("failed to remove generated home directory path", "path", v.home, "error", err)
 			}
 		}
+
+		if v.command != nil {
+			v.logger.Debug("halting running process")
+			v.command.Process.Kill()
+		}
 	}
 }
 

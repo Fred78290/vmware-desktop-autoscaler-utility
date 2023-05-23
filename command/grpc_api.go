@@ -1,7 +1,6 @@
 package command
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"time"
@@ -54,18 +53,22 @@ func BuildGrpcApiCommand(name string, ui cli.Ui) cli.CommandFactory {
 	}
 }
 
+func (c *GrpcApiCommand) logError(err error) {
+	if c.Config.LogDisplay {
+		c.logger.Error("api setup failure", "error", err)
+	} else {
+		c.UI.Error("Failed to setup VMWare desktop utility gRPC service - " + err.Error())
+	}
+}
+
 func (c *GrpcApiCommand) Run(args []string) int {
 	exitCode := 1
 	err := c.setup(args)
 
 	if err != nil {
 		c.UI.Error("Failed to initialize: " + err.Error())
-	} else if grpc, err := c.buildGrpc(c.Config.Driver); err != nil {
-		if c.Config.LogDisplay {
-			c.logger.Error("api setup failure", "error", err)
-		} else {
-			c.UI.Error("Failed to setup VMWare desktop utility gRPC service - " + err.Error())
-		}
+	} else if grpc, err := c.buildGrpc(); err != nil {
+		c.logError(err)
 	} else {
 
 		if c.Config.LogDisplay {
@@ -75,11 +78,7 @@ func (c *GrpcApiCommand) Run(args []string) int {
 		}
 
 		if err = grpc.Start(); err != nil {
-			if c.Config.LogDisplay {
-				c.logger.Error("startup failure", "error", err)
-			} else {
-				c.UI.Error("Failed to start the VMWare desktop utility gRPC service - " + err.Error())
-			}
+			c.logError(err)
 		} else {
 			exitCode = 0
 
@@ -101,68 +100,24 @@ func (c *GrpcApiCommand) Run(args []string) int {
 	return exitCode
 }
 
-func (c *GrpcApiCommand) buildGrpc(driverName string) (a *server.Grpc, err error) {
+func (c *GrpcApiCommand) buildGrpc() (a *server.Grpc, err error) {
 	bindAddr := c.Config.Listen
 
 	// Start with building the base driver
-	b, err := driver.NewBaseDriver(nil, &c.Config.CommonConfig, c.logger)
-	if err != nil {
-		c.logger.Error("base driver setup failure", "error", err)
-		return
-	}
+	if drv, err := driver.NewVMRestDriver(&c.Config.CommonConfig, c.logger); err != nil {
+		return nil, err
+	} else {
+		c.driver = drv
 
-	// Allow the user to define the driver. It may not work, but they're the boss
-	attempt_vmrest := true
-	var drv driver.Driver
+		a, err = server.CreateGrpc(bindAddr, drv, c.Config.LogDisplay, c.UI, c.logger)
 
-	switch driverName {
-	case "simple":
-		c.logger.Warn("creating simple driver via user request")
-		drv, err = driver.NewSimpleDriver(nil, b, c.logger)
-		attempt_vmrest = false
-	case "advanced":
-		c.logger.Warn("creating advanced driver via user request")
-		drv, err = driver.NewAdvancedDriver(nil, b, c.logger)
-		attempt_vmrest = false
-	default:
-		if driverName != "" {
-			c.logger.Warn("unknown driver name provided, detecting appropriate driver", "name", driverName)
+		if err != nil {
+			c.logger.Debug("utility server setup failure", "error", err)
+			return nil, errors.New("failed to setup VMWare desktop utility gRPC service - " + err.Error())
 		}
-		drv, err = driver.CreateDriver(nil, b, c.logger)
+
+		return a, nil
 	}
-
-	if err != nil {
-		c.logger.Error("driver setup failure", "error", err)
-		return nil, errors.New("failed to setup VMWare desktop utility driver - " + err.Error())
-	}
-
-	// Now that we are setup, we can attempt to upgrade the driver to the
-	// vmrest driver if possible or requested
-	if attempt_vmrest {
-		c.logger.Info("attempting to upgrade to vmrest driver")
-		if drv, err = driver.NewVmrestDriver(context.Background(), &c.Config.CommonConfig, drv, c.logger); err != nil {
-			c.logger.Error("failed to upgrade to vmrest driver", "error", err)
-			return
-		}
-	}
-
-	if !drv.GetDriver().Validate() {
-		// NOTE: We only log the failure and allow the process to start. This
-		//       lets the plugin communicate with the service, but all requests
-		//       result in an error which includes the validation failure.
-		c.logger.Error("vmware validation failed")
-	}
-
-	c.driver = drv
-
-	a, err = server.CreateGrpc(bindAddr, drv, c.Config.LogDisplay, c.UI, c.logger)
-
-	if err != nil {
-		c.logger.Debug("utility server setup failure", "error", err)
-		return nil, errors.New("failed to setup VMWare desktop utility gRPC service - " + err.Error())
-	}
-
-	return
 }
 
 func (c *GrpcApiCommand) SharedRun(args []string, drv driver.Driver) int {

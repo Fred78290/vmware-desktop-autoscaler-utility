@@ -25,6 +25,25 @@
 			]
 		},
 		{
+			"name": "autoscaler-utility-embeded-vmrest",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+            "program": "${workspaceFolder}",
+            "cwd": "${env:HOME}/go/src/github.com/Fred78290/vmware-desktop-autoscaler-utility",
+            "preLaunchTask": "clean",
+			"env": {
+
+			},
+			"args": [
+				"full",
+				"--debug=true",
+				"--listen=unix:/tmp/vmware-desktop-utility.sock",
+				"--address=127.0.0.1",
+				"--port=5622"
+			]
+		},
+		{
 			"name": "Generate certificat",
 			"type": "go",
 			"request": "launch",

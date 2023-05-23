@@ -222,19 +222,23 @@ func NewVMRestClient(c *settings.CommonConfig) (*client.APIClient, error) {
 			}
 
 		}
+
 		return client.NewAPIClient(configuration)
 
-	} else {
-		configuration = &client.Configuration{
-			Endpoint:    "http://127.0.0.1:8697",
-			UserAgent:   utils.UserAgent(),
-			UnsecureTLS: true,
-		}
+		/*	} else {
+			configuration = &client.Configuration{
+				Endpoint:    "http://127.0.0.1:8697",
+				UserAgent:   utils.UserAgent(),
+				UnsecureTLS: true,
+			}
 
-		client, _ := client.NewAPIClient(configuration)
+			client, _ := client.NewAPIClient(configuration)
 
-		return client, nil
+			return client, nil
+		*/
 	}
+
+	return nil, nil
 
 }
 

@@ -11,7 +11,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/Fred78290/vmware-desktop-autoscaler-utility/api"
+	"github.com/Fred78290/kubernetes-desktop-autoscaler/api"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/driver"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/service"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utility"

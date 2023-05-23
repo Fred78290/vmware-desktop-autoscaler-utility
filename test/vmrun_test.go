@@ -15,6 +15,7 @@ import (
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utils"
 	"github.com/drone/envsubst"
 	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/util"
 	"github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/utility"
 )
 
@@ -61,7 +62,7 @@ func getConfFile() string {
 		return config
 	}
 
-	return "../test/config.json"
+	return "config.json"
 }
 
 func loadConfig() (*ConfigTest, error) {
@@ -177,4 +178,6 @@ func TestCreateVM(t *testing.T) {
 			}
 		}
 	}
+
+	util.RunShutdownTasks()
 }

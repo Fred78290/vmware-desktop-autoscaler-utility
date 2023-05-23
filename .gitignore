@@ -9,6 +9,5 @@ certificates/
 
 .vscode/settings.json
 
-test/config.json
-
 test.env
+release/

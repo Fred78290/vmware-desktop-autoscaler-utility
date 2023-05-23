@@ -1,0 +1,67 @@
+{
+	"name": "desktop-autoscaler-utility",
+	"hostname": "desktop-autoscaler-utility",
+	"username": "kubernetes",
+	"password": "1234",
+	"template": "${VMREST_TEST_TEMPLATE}",
+	"time-zone": "Europe/Paris",
+	"ssh-key": "${VMREST_TEST_SSH_KEY}",
+	"node-index": 10,
+	"vcpus": 2,
+	"memory": 2048,
+	"disk-size": 20480,
+	"cloud-init": {
+		"package_update": false,
+		"package_upgrade": false,
+		"growpart": {
+			"mode": "auto",
+			"devices": [
+				"/"
+			],
+			"ignore_growroot_disabled": false
+		},
+		"runcmd": [
+			"echo '172.16.251.20 desktop-dev-k3s-masterkube desktop-dev-k3s-masterkube' >> /etc/hosts"
+		]
+	},
+	"network": {
+		"domain": "acme.com",
+		"dns": {
+			"search": [
+				"acme.com"
+			],
+			"nameserver": [
+				"8.8.8.8"
+			]
+		},
+		"interfaces": [
+			{
+				"primary": false,
+				"exists": true,
+				"vnet": "vmnet8",
+				"type": "nat",
+				"device": "vmxnet3",
+				"mac-address": "generate",
+				"nic": "eth0",
+				"dhcp": true,
+				"use-dhcp-routes": true,
+				"routes": []
+			},
+			{
+				"primary": true,
+				"exists": true,
+				"vnet": "vmnet1",
+				"type": "hostOnly",
+				"device": "vmxnet3",
+				"mac-address": "generate",
+				"nic": "eth1",
+				"dhcp": false,
+				"use-dhcp-routes": false,
+				"address": "172.16.251.24",
+				"gateway": "192.168.172.2",
+				"netmask": "255.255.255.0",
+				"routes": []
+			}
+		]
+	}
+}

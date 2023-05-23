@@ -1,7 +1,6 @@
 package command
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"sync"
@@ -71,7 +70,7 @@ func (c *RestApiCommand) Run(args []string) int {
 		return exitCode
 	}
 
-	if restApi, err = c.buildRestApi(c.Config.Driver, c.Config.Port); err != nil {
+	if restApi, err = c.buildRestApi(); err != nil {
 		if c.Config.LogDisplay {
 			c.logger.Error("api setup failure", "error", err)
 		} else {
@@ -114,62 +113,14 @@ func (c *RestApiCommand) Run(args []string) int {
 	return 0
 }
 
-func (c *RestApiCommand) buildRestApi(driverName string, port int64) (*server.Api, error) {
+func (c *RestApiCommand) buildRestApi() (a *server.Api, err error) {
 	bindAddr := c.Config.Address
-	bindPort := int(port)
+	bindPort := int(c.Config.Port)
 
 	// Start with building the base driver
-	if b, err := driver.NewBaseDriver(nil, &c.Config.CommonConfig, c.logger); err != nil {
-		c.logger.Error("base driver setup failure", "error", err)
+	if drv, err := driver.NewVMRestDriver(&c.Config.CommonConfig, c.logger); err != nil {
 		return nil, err
 	} else {
-		var drv driver.Driver
-		var a *server.Api
-
-		// Allow the user to define the driver. It may not work, but they're the boss
-		attempt_vmrest := true
-
-		switch driverName {
-		case "simple":
-			c.logger.Warn("creating simple driver via user request")
-			drv, err = driver.NewSimpleDriver(nil, b, c.logger)
-			attempt_vmrest = false
-
-		case "advanced":
-			c.logger.Warn("creating advanced driver via user request")
-			drv, err = driver.NewAdvancedDriver(nil, b, c.logger)
-			attempt_vmrest = false
-
-		default:
-			if driverName != "" {
-				c.logger.Warn("unknown driver name provided, detecting appropriate driver", "name", driverName)
-			}
-			drv, err = driver.CreateDriver(nil, b, c.logger)
-		}
-
-		if err != nil {
-			c.logger.Error("driver setup failure", "error", err)
-			return nil, errors.New("failed to setup VMWare desktop utility driver - " + err.Error())
-		}
-
-		// Now that we are setup, we can attempt to upgrade the driver to the
-		// vmrest driver if possible or requested
-		if attempt_vmrest {
-			c.logger.Info("attempting to upgrade to vmrest driver")
-
-			if drv, err = driver.NewVmrestDriver(context.Background(), &c.Config.CommonConfig, drv, c.logger); err != nil {
-				c.logger.Error("failed to upgrade to vmrest driver", "error", err)
-				return nil, err
-			}
-		}
-
-		if !drv.GetDriver().Validate() {
-			// NOTE: We only log the failure and allow the process to start. This
-			//       lets the plugin communicate with the service, but all requests
-			//       result in an error which includes the validation failure.
-			c.logger.Error("vmware validation failed")
-		}
-
 		c.driver = drv
 
 		if a, err = server.CreateRestApi(bindAddr, bindPort, drv, c.logger); err != nil {
