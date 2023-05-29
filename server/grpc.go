@@ -14,13 +14,13 @@ import (
 	"github.com/Fred78290/kubernetes-desktop-autoscaler/api"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/driver"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/service"
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/status"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utility"
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/mitchellh/cli"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
-	"google.golang.org/grpc/status"
 )
 
 type Grpc struct {
@@ -263,12 +263,13 @@ func (g *Grpc) Create(ctx context.Context, req *api.CreateRequest) (*api.CreateR
 		return &api.CreateResponse{Response: &api.CreateResponse_Result{
 			Result: &api.CreateReply{
 				Machine: &api.VirtualMachine{
-					Uuid:    result.Uuid,
-					Vmx:     result.Path,
-					Vcpus:   req.Vcpus,
-					Memory:  req.Memory,
-					Powered: result.Powered,
-					Address: result.Address,
+					Uuid:        result.Uuid,
+					Vmx:         result.Path,
+					Vcpus:       req.Vcpus,
+					Memory:      req.Memory,
+					Powered:     result.Powered,
+					Address:     result.Address,
+					ToolsStatus: result.ToolsStatus,
 				},
 			},
 		}}, nil
@@ -575,13 +576,14 @@ func (g *Grpc) VirtualMachineByName(ctx context.Context, req *api.VirtualMachine
 		return &api.VirtualMachineResponse{
 			Response: &api.VirtualMachineResponse_Result{
 				Result: &api.VirtualMachine{
-					Uuid:    vm.Uuid,
-					Vmx:     vm.Path,
-					Name:    vm.Name,
-					Vcpus:   int32(vm.Vcpus),
-					Memory:  int64(vm.Memory),
-					Powered: vm.Powered,
-					Address: vm.Address,
+					Uuid:        vm.Uuid,
+					Vmx:         vm.Path,
+					Name:        vm.Name,
+					Vcpus:       int32(vm.Vcpus),
+					Memory:      int64(vm.Memory),
+					Powered:     vm.Powered,
+					Address:     vm.Address,
+					ToolsStatus: vm.ToolsStatus,
 				},
 			},
 		}, nil
@@ -610,13 +612,14 @@ func (g *Grpc) VirtualMachineByUUID(ctx context.Context, req *api.VirtualMachine
 		return &api.VirtualMachineResponse{
 			Response: &api.VirtualMachineResponse_Result{
 				Result: &api.VirtualMachine{
-					Uuid:    vm.Uuid,
-					Vmx:     vm.Path,
-					Name:    vm.Name,
-					Vcpus:   int32(vm.Vcpus),
-					Memory:  int64(vm.Memory),
-					Powered: vm.Powered,
-					Address: vm.Address,
+					Uuid:        vm.Uuid,
+					Vmx:         vm.Path,
+					Name:        vm.Name,
+					Vcpus:       int32(vm.Vcpus),
+					Memory:      int64(vm.Memory),
+					Powered:     vm.Powered,
+					Address:     vm.Address,
+					ToolsStatus: vm.ToolsStatus,
 				},
 			},
 		}, nil
@@ -646,13 +649,14 @@ func (g *Grpc) ListVirtualMachines(ctx context.Context, req *api.VirtualMachines
 
 		for _, vm := range vms {
 			machines = append(machines, &api.VirtualMachine{
-				Uuid:    vm.Uuid,
-				Name:    vm.Name,
-				Vmx:     vm.Path,
-				Vcpus:   int32(vm.Vcpus),
-				Memory:  int64(vm.Memory),
-				Powered: vm.Powered,
-				Address: vm.Address,
+				Uuid:        vm.Uuid,
+				Name:        vm.Name,
+				Vmx:         vm.Path,
+				Vcpus:       int32(vm.Vcpus),
+				Memory:      int64(vm.Memory),
+				Powered:     vm.Powered,
+				Address:     vm.Address,
+				ToolsStatus: vm.ToolsStatus,
 			})
 		}
 

@@ -49,10 +49,6 @@ func (r *RegexpHandler) ServeHTTP(writ http.ResponseWriter, req *http.Request) {
 	r.logger.Info("request start", "method", req.Method, "path", req.URL.Path, "request-id", fmt.Sprintf("%p", writ))
 	writ.Header().Set("Content-Type", API_CONTENT_TYPE)
 
-	if r.invalidRequester(writ, req) {
-		return
-	}
-
 	for _, route := range r.routes {
 		if route.path.MatchString(req.URL.Path) {
 			if r.api.Driver.GetDriver().Validated() {
@@ -66,11 +62,6 @@ func (r *RegexpHandler) ServeHTTP(writ http.ResponseWriter, req *http.Request) {
 	}
 
 	r.notFound(writ)
-}
-
-type StandardResponse struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
 }
 
 func (r *RegexpHandler) respond(writ http.ResponseWriter, body interface{}, code int) {
@@ -89,6 +80,10 @@ func (r *RegexpHandler) respond(writ http.ResponseWriter, body interface{}, code
 
 func (r *RegexpHandler) notFound(writ http.ResponseWriter) {
 	r.error(writ, "not found", http.StatusNotFound)
+}
+
+func (r *RegexpHandler) notSupported(writ http.ResponseWriter) {
+	r.error(writ, "not supported method", http.StatusMethodNotAllowed)
 }
 
 func (r *RegexpHandler) invalidDriver(writ http.ResponseWriter) {
@@ -113,9 +108,11 @@ func (r *RegexpHandler) invalidRequester(writ http.ResponseWriter, req *http.Req
 func (r *RegexpHandler) error(writ http.ResponseWriter, msg string, code int) {
 	r.logger.Debug("request error", "code", code, "message", msg)
 
-	response := StandardResponse{
-		Code:    code,
-		Message: msg,
+	response := RestResponse{
+		Error: &Error{
+			Code:    code,
+			Message: msg,
+		},
 	}
 
 	r.respond(writ, response, code)

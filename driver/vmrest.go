@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/big"
 	"net"
 	"net/http"
@@ -83,9 +82,14 @@ const WINDOWS_VMREST_CONFIG = "vmrest.cfg"
 const VMREST_CONTENT_TYPE = "application/vnd.vmware.vmw.rest-v1+json"
 const VMREST_VAGRANT_DESC = "vagrant: managed port"
 const VMREST_KEEPALIVE_SECONDS = 300
-
+const DESKTOP_CONFIG = "desktop-autoscaler-utility.cfg"
 const VMWARE_NETDEV_PREFIX = "vmnet"
 const VAGRANT_NETDEV_PREFIX = "vgtnet"
+
+type ConfigStorage struct {
+	User     string
+	Password string
+}
 
 func (v *vmrest) Init() error {
 	var err error
@@ -105,17 +109,7 @@ func (v *vmrest) Init() error {
 
 	if err = v.validate(); err != nil {
 		return err
-	} else if v.isWindows() {
-		// On Windows, home directory will be based on the user
-		// running the command. When running as a service under
-		// the SYSTEM user, the path returned by os.UserHomeDir()
-		// will be incorrect due to us being a 64bit executable
-		// and vmrest.exe being a 32 bit executable. The home
-		// directory ends up being different for 64 and 32 bit
-		// executables for the SYSTEM user, so if the SYSTEM
-		// user is detected as running we must use a customized
-		// path to drop the configuration file in the right place
-		// On Windows, home must be %USERPROFILE%
+	} else {
 		if v.home, err = os.UserHomeDir(); err != nil {
 			v.logger.Trace("failed to determine user home directory", "error", err)
 			return err
@@ -125,37 +119,77 @@ func (v *vmrest) Init() error {
 			v.logger.Trace("failed to determine current user", "error", err)
 			return err
 		} else {
+			var configPath string
 
-			if strings.ToLower(u.Name) == "system" {
-				home := v.home
-				v.home = strings.Replace(v.home, "system32", "SysWOW64", 1)
-				v.logger.Info("modified user home directory for SYSTEM", "user", u.Name, "original", home, "updated", v.home)
+			if v.isWindows() {
+				// On Windows, home directory will be based on the user
+				// running the command. When running as a service under
+				// the SYSTEM user, the path returned by os.UserHomeDir()
+				// will be incorrect due to us being a 64bit executable
+				// and vmrest.exe being a 32 bit executable. The home
+				// directory ends up being different for 64 and 32 bit
+				// executables for the SYSTEM user, so if the SYSTEM
+				// user is detected as running we must use a customized
+				// path to drop the configuration file in the right place
+				// On Windows, home must be %USERPROFILE%
+				if strings.ToLower(u.Name) == "system" {
+					home := v.home
+					v.home = strings.Replace(v.home, "system32", "SysWOW64", 1)
+					v.logger.Info("modified user home directory for SYSTEM", "user", u.Name, "original", home, "updated", v.home)
+				}
+
+				v.config_path = path.Join(v.home, WINDOWS_VMREST_CONFIG)
+				configPath = path.Join(v.home, DESKTOP_CONFIG)
+			} else {
+				v.config_path = path.Join(v.home, VMREST_CONFIG)
+				configPath = path.Join(v.home, ".local", "vmware", DESKTOP_CONFIG)
+				utils.MkDir(path.Dir(configPath))
 			}
 
-			v.config_path = path.Join(v.home, WINDOWS_VMREST_CONFIG)
+			config := &ConfigStorage{}
+
+			if utils.FileExists(v.config_path) {
+				if !utils.FileExists(configPath) {
+					v.logger.Warn(fmt.Sprintf("the config: %s, doesn't exist. create it as { \"username\": \"<username>\", \"password\": \"<password>\" } with values from %s or remove vmrestCfg", configPath, v.config_path))
+					return fmt.Errorf("the config: %s, doesn't exist", configPath)
+				}
+
+				if err = utils.LoadJsonFromFile(configPath, config); err != nil {
+					return err
+				}
+
+				v.username = config.User
+				v.password = config.Password
+
+				// Avoid conflict generate new port
+				if v.port, err = v.portgen(); err != nil {
+					return err
+				}
+			} else {
+				if v.username, err = v.stringgen(false, 0); err != nil {
+					return err
+				}
+
+				if v.password, err = v.stringgen(true, 0); err != nil {
+					return err
+				}
+
+				if v.port, err = v.portgen(); err != nil {
+					return err
+				}
+
+				if err = v.configure(); err != nil {
+					return err
+				}
+
+				config.User = v.username
+				config.Password = v.password
+
+				if err = utils.StoreJsonToFile(configPath, config); err != nil {
+					return err
+				}
+			}
 		}
-
-	} else if v.home, err = ioutil.TempDir("", "util"); err != nil {
-		v.logger.Trace("failed to create configuration directory", "error", err)
-		return err
-	} else {
-		v.config_path = path.Join(v.home, VMREST_CONFIG)
-	}
-
-	if v.username, err = v.stringgen(false, 0); err != nil {
-		return err
-	}
-
-	if v.password, err = v.stringgen(true, 0); err != nil {
-		return err
-	}
-
-	if v.port, err = v.portgen(); err != nil {
-		return err
-	}
-
-	if err = v.configure(); err != nil {
-		return err
 	}
 
 	v.logger.Trace("process configuration", "home", v.home, "username", v.username, "password", v.password, "port", v.port)
@@ -169,16 +203,6 @@ func (v *vmrest) Init() error {
 
 func (v *vmrest) Cleanup() {
 	if len(v.vmrestURL) == 0 {
-		if v.isWindows() {
-			v.logger.Debug("vmrest configuration not removed on Windows platform")
-		} else if v.home != "" {
-			v.logger.Trace("removing generated home directory", "path", v.home)
-
-			if err := os.RemoveAll(v.home); err != nil {
-				v.logger.Error("failed to remove generated home directory path", "path", v.home, "error", err)
-			}
-		}
-
 		if v.command != nil {
 			v.logger.Debug("halting running process")
 			v.command.Process.Kill()
@@ -218,88 +242,95 @@ func (v *vmrest) UserAgent() string {
 	return utils.UserAgent()
 }
 
+func (v *vmrest) runCommand() bool {
+	v.logger.Trace("activity request detected")
+
+	if v.command == nil {
+		v.logger.Debug("starting the process")
+		v.command = exec.Command(v.path, "-p", strconv.Itoa(v.port))
+
+		// Grab output from the process and send it to the logger.
+		// Useful for debugging if something goes wrong so we can
+		// see what the process is actually doing.
+		stderr, err := v.command.StderrPipe()
+
+		if err != nil {
+			v.logger.Error("failed to get stderr pipe", "error", err)
+			return true
+		}
+
+		stdout, err := v.command.StdoutPipe()
+
+		if err != nil {
+			v.logger.Error("failed to get stdout pipe", "error", err)
+			return true
+		}
+
+		go func() {
+			r := bufio.NewReader(stdout)
+
+			for {
+				if l, _, err := r.ReadLine(); err != nil {
+					v.logger.Warn("stdout pipe error", "error", err)
+					break
+				} else {
+					v.logger.Info("vmrest stdout", "output", string(l))
+				}
+
+			}
+		}()
+
+		go func() {
+			r := bufio.NewReader(stderr)
+
+			for {
+				if l, _, err := r.ReadLine(); err != nil {
+					v.logger.Warn("stderr pipe error", "error", err)
+					break
+				} else {
+					v.logger.Info("vmrest stderr", "output", string(l))
+				}
+			}
+		}()
+
+		if err = v.homedStart(v.command); err != nil {
+			v.logger.Error("failed to start", "error", err)
+			return true
+		}
+
+		if _, err = os.FindProcess(v.command.Process.Pid); err != nil {
+			v.logger.Error("failed to locate started vmrest process", "error", err)
+			return true
+		}
+
+		// Start a cleanup function to prevent any unnoticed zombies from
+		// hanging around
+		go func() {
+			v.command.Wait()
+			v.command = nil
+			v.logger.Debug("process has been completed and reaped")
+		}()
+
+		v.logger.Debug("process has been started")
+	}
+
+	/*		case <-time.After(VMREST_KEEPALIVE_SECONDS * time.Second):
+			if v.command != nil {
+				v.logger.Debug("halting running process")
+				v.command.Process.Kill()
+			}
+	*/
+	return false
+}
+
 func (v *vmrest) Runner() {
 	if len(v.vmrestURL) == 0 {
 		for {
 			select {
 			case <-v.activity:
-				v.logger.Trace("activity request detected")
-
-				if v.command == nil {
-					v.logger.Debug("starting the process")
-					v.command = exec.Command(v.path)
-
-					// Grab output from the process and send it to the logger.
-					// Useful for debugging if something goes wrong so we can
-					// see what the process is actually doing.
-					stderr, err := v.command.StderrPipe()
-
-					if err != nil {
-						v.logger.Error("failed to get stderr pipe", "error", err)
-						continue
-					}
-
-					stdout, err := v.command.StdoutPipe()
-
-					if err != nil {
-						v.logger.Error("failed to get stdout pipe", "error", err)
-						continue
-					}
-
-					go func() {
-						r := bufio.NewReader(stdout)
-
-						for {
-							if l, _, err := r.ReadLine(); err != nil {
-								v.logger.Warn("stdout pipe error", "error", err)
-								break
-							} else {
-								v.logger.Info("vmrest stdout", "output", string(l))
-							}
-
-						}
-					}()
-
-					go func() {
-						r := bufio.NewReader(stderr)
-
-						for {
-							if l, _, err := r.ReadLine(); err != nil {
-								v.logger.Warn("stderr pipe error", "error", err)
-								break
-							} else {
-								v.logger.Info("vmrest stderr", "output", string(l))
-							}
-						}
-					}()
-
-					if err = v.homedStart(v.command); err != nil {
-						v.logger.Error("failed to start", "error", err)
-						continue
-					}
-
-					if _, err = os.FindProcess(v.command.Process.Pid); err != nil {
-						v.logger.Error("failed to locate started vmrest process", "error", err)
-						continue
-					}
-
-					// Start a cleanup function to prevent any unnoticed zombies from
-					// hanging around
-					go func() {
-						v.command.Wait()
-						v.command = nil
-						v.logger.Debug("process has been completed and reaped")
-					}()
-
-					v.logger.Debug("process has been started")
+				if v.runCommand() {
+					continue
 				}
-
-				/*		case <-time.After(VMREST_KEEPALIVE_SECONDS * time.Second):
-						if v.command != nil {
-							v.logger.Debug("halting running process")
-							v.command.Process.Kill()
-						}
-				*/
 			case <-v.ctx.Done():
 				v.logger.Warn("halting due to context done")
 				if v.command != nil {
@@ -526,7 +557,7 @@ func NewVmrestDriver(ctx context.Context, c *settings.CommonConfig, f Driver, lo
 			logger.Warn("failed to create vmrest driver", "error", err)
 			logger.Info("using fallback driver")
 
-			return f, nil
+			return f, err
 
 		} else {
 			var b *vagrant_driver.BaseDriver
@@ -563,18 +594,19 @@ func NewVmrestDriver(ctx context.Context, c *settings.CommonConfig, f Driver, lo
 				isBigSurMin: utility.IsBigSurMin(),
 				logger:      logger,
 			}
-			// License detection is not always correct so we need to validate
-			// that networking functionality is available via the vmrest process
-			logger.Debug("validating that vmrest service provides networking functionality")
 
 			if _, err = d.Vmnets(); err != nil {
 				logger.Error("vmrest driver failed to access networking functions, using fallback", "status", "invalid", "error", err)
 				return f, nil
 			}
 
+			// License detection is not always correct so we need to validate
+			// that networking functionality is available via the vmrest process
+			logger.Debug("validating that vmrest service provides networking functionality")
+
 			if d.ExtendedDriver.client, err = apiclient.NewAPIClient(configuration); err != nil {
 				logger.Error("vmrest api client failed", "status", "invalid", "error", err)
-				return f, nil
+				return f, err
 			}
 
 			d.ExtendedDriver.vmrun.SetApiClient(d.ExtendedDriver.client)
@@ -692,7 +724,6 @@ func (v *VmrestDriver) PortFwds(slot string) (*vagrant_driver.PortFwds, error) {
 				return nil, err
 			} else {
 				device = nat.Name
-				slot = string(device[len(device)-1])
 			}
 		}
 
@@ -937,7 +968,7 @@ func (v *VmrestDriver) Do(method, path string, body io.Reader) ([]byte, error) {
 	} else {
 		defer resp.Body.Close()
 
-		if r, err := ioutil.ReadAll(resp.Body); err != nil {
+		if r, err := io.ReadAll(resp.Body); err != nil {
 			return nil, err
 		} else {
 			v.logger.Debug("received response", "code", resp.StatusCode, "status", resp.Status, "body", string(r), "error", err)

@@ -14,7 +14,9 @@ import (
 )
 
 const DEFAULT_GRPCAPI_ADDRESS = "tcp://0.0.0.0:5323"
-const DEFAULT_VMREST_ADDRESS = "http://127.0.0.1:8697"
+
+// const DEFAULT_VMREST_ADDRESS = "http://127.0.0.1:8697"
+const DEFAULT_VMREST_ADDRESS = ""
 
 // Command for starting the GRPC API
 type GrpcApiCommand struct {

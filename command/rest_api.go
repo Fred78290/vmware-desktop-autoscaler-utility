@@ -16,7 +16,7 @@ import (
 
 var Shutdown sync.Cond
 
-const DEFAULT_RESTAPI_PORT = 5322
+const DEFAULT_RESTAPI_PORT = 5622
 const DEFAULT_RESTAPI_ADDRESS = "127.0.0.1"
 
 // Command for starting the REST API

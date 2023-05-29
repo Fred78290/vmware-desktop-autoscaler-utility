@@ -20,9 +20,9 @@ func main() {
 
 	s := make(chan os.Signal)
 
-	signal.Notify(s, os.Interrupt, syscall.SIGTERM)
-
 	go func() {
+		signal.Notify(s, os.Interrupt, syscall.SIGTERM)
+
 		<-s
 		util.RunShutdownTasks()
 	}()

@@ -2,6 +2,8 @@ package server
 
 import (
 	"crypto/tls"
+	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/driver"
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/service"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utils"
 )
 
@@ -21,6 +24,11 @@ type Error struct {
 type RestResponse struct {
 	Error  *Error      `json:"error,omitempty"`
 	Result interface{} `json:"result,omitempty"`
+}
+
+type VMDetail struct {
+	*service.VirtualMachine
+	EthernetCards []*service.EthernetCard `json:"ethernet,omitempty"`
 }
 
 var hopHeaders = []string{
@@ -155,7 +163,7 @@ func (r *RegexpHandler) handleVmrestProxy(wr http.ResponseWriter, req *http.Requ
 }
 
 func (r *RegexpHandler) handleCreateVirtualMachine(wr http.ResponseWriter, req *http.Request) {
-	params := r.pathParams(req.URL.Path)
+	var vmdefs service.CreateVirtualMachine
 
 	if req.Method == "POST" {
 		r.netLock.Lock()
@@ -163,13 +171,15 @@ func (r *RegexpHandler) handleCreateVirtualMachine(wr http.ResponseWriter, req *
 
 		r.logger.Debug("create vm")
 
-		if done, err := r.vmrun.Delete(params["vmuuid"]); err != nil {
+		if err := r.readBody(req, &vmdefs); err != nil {
+			r.error(wr, err.Error(), http.StatusInternalServerError)
+		} else if vm, err := r.vmrun.Create(&vmdefs); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
+			r.respond(wr, newResponse(&vm), http.StatusOK)
 		}
 	} else {
-		r.notFound(wr)
+		r.notSupported(wr)
 	}
 }
 
@@ -188,7 +198,7 @@ func (r *RegexpHandler) handleDeleteVirtualMachine(wr http.ResponseWriter, req *
 			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
 		}
 	} else {
-		r.notFound(wr)
+		r.notSupported(wr)
 	}
 }
 
@@ -207,7 +217,7 @@ func (r *RegexpHandler) handlePowerOnVirtualMachine(wr http.ResponseWriter, req 
 			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
 		}
 	} else {
-		r.notFound(wr)
+		r.notSupported(wr)
 	}
 }
 
@@ -226,7 +236,7 @@ func (r *RegexpHandler) handlePowerOffVirtualMachine(wr http.ResponseWriter, req
 			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
 		}
 	} else {
-		r.notFound(wr)
+		r.notSupported(wr)
 	}
 }
 
@@ -245,7 +255,7 @@ func (r *RegexpHandler) handlePowerStateVirtualMachine(wr http.ResponseWriter, r
 			r.respond(wr, newResponseWithKeyValue("powered", done), http.StatusOK)
 		}
 	} else {
-		r.notFound(wr)
+		r.notSupported(wr)
 	}
 }
 
@@ -264,27 +274,12 @@ func (r *RegexpHandler) handleShutdownGuestVirtualMachine(wr http.ResponseWriter
 			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
 		}
 	} else {
-		r.notFound(wr)
+		r.notSupported(wr)
 	}
 }
 
 func (r *RegexpHandler) handleStatusVirtualMachine(wr http.ResponseWriter, req *http.Request) {
-	params := r.pathParams(req.URL.Path)
-
-	if req.Method == "GET" {
-		r.netLock.Lock()
-		defer r.netLock.Unlock()
-
-		r.logger.Debug("vm shutdown", "vmuuid", params["vmuuid"])
-
-		if status, err := r.vmrun.Status(params["vmuuid"]); err != nil {
-			r.error(wr, err.Error(), http.StatusNotFound)
-		} else {
-			r.respond(wr, newResponse(status), http.StatusOK)
-		}
-	} else {
-		r.notFound(wr)
-	}
+	r.handleVirtualMachineByUUID(wr, req)
 }
 
 func (r *RegexpHandler) handleWaitForIP(wr http.ResponseWriter, req *http.Request) {
@@ -302,7 +297,7 @@ func (r *RegexpHandler) handleWaitForIP(wr http.ResponseWriter, req *http.Reques
 			r.respond(wr, newResponseWithKeyValue("address", address), http.StatusOK)
 		}
 	} else {
-		r.notFound(wr)
+		r.notSupported(wr)
 	}
 }
 
@@ -321,7 +316,7 @@ func (r *RegexpHandler) handleWaitForToolsRunning(wr http.ResponseWriter, req *h
 			r.respond(wr, newResponseWithKeyValue("running", running), http.StatusOK)
 		}
 	} else {
-		r.notFound(wr)
+		r.notSupported(wr)
 	}
 }
 
@@ -340,7 +335,7 @@ func (r *RegexpHandler) handleSetAutoStart(wr http.ResponseWriter, req *http.Req
 			r.respond(wr, newResponseWithKeyValue("autostart", autostart), http.StatusOK)
 		}
 	} else {
-		r.notFound(wr)
+		r.notSupported(wr)
 	}
 }
 
@@ -353,13 +348,20 @@ func (r *RegexpHandler) handleVirtualMachineByName(wr http.ResponseWriter, req *
 
 		r.logger.Debug("vm by name", "name", params["name"])
 
-		if vm, err := r.vmrun.VirtualMachineByName(params["name"]); err != nil {
+		var detail VMDetail
+		var err error
+		var status *service.VirtualMachineStatus
+
+		if detail.VirtualMachine, err = r.vmrun.VirtualMachineByName(params["name"]); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
+		} else if status, err = r.vmrun.Status(detail.Uuid); err != nil {
+			r.error(wr, err.Error(), http.StatusInternalServerError)
 		} else {
-			r.respond(wr, newResponse(vm), http.StatusOK)
+			detail.EthernetCards = status.EthernetCards
+			r.respond(wr, newResponse(&detail), http.StatusOK)
 		}
 	} else {
-		r.notFound(wr)
+		r.notSupported(wr)
 	}
 }
 
@@ -372,13 +374,64 @@ func (r *RegexpHandler) handleVirtualMachineByUUID(wr http.ResponseWriter, req *
 
 		r.logger.Debug("vm by uuid", "vmuuid", params["vmuuid"])
 
-		if vm, err := r.vmrun.VirtualMachineByUUID(params["vmuuid"]); err != nil {
+		var detail VMDetail
+		var err error
+		var status *service.VirtualMachineStatus
+
+		if detail.VirtualMachine, err = r.vmrun.VirtualMachineByUUID(params["vmuuid"]); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
+		} else if status, err = r.vmrun.Status(detail.Uuid); err != nil {
+			r.error(wr, err.Error(), http.StatusInternalServerError)
 		} else {
-			r.respond(wr, newResponse(vm), http.StatusOK)
+			detail.EthernetCards = status.EthernetCards
+			r.respond(wr, newResponse(&detail), http.StatusOK)
 		}
 	} else {
-		r.notFound(wr)
+		r.notSupported(wr)
+	}
+}
+
+type ParamVnet struct {
+	Vnet string
+	Nic  int
+}
+
+func (r *RegexpHandler) handleNetworkInterface(wr http.ResponseWriter, req *http.Request) {
+	var vnet ParamVnet
+
+	params := r.pathParams(req.URL.Path)
+
+	r.netLock.Lock()
+	defer r.netLock.Unlock()
+
+	vmuuid := params["vmuuid"]
+
+	r.logger.Debug("vnet by uuid", "vmuuid", vmuuid)
+
+	if req.Method == "GET" {
+		if info, err := r.vmrun.Status(vmuuid); err != nil {
+			r.error(wr, err.Error(), http.StatusInternalServerError)
+		} else {
+			r.respond(wr, newResponse(info.EthernetCards), http.StatusOK)
+		}
+	} else if req.Method == "POST" {
+		if err := r.readBody(req, &vnet); err != nil {
+			r.error(wr, err.Error(), http.StatusInternalServerError)
+		} else if err = r.vmrun.AddNetworkInterface(vmuuid, vnet.Vnet); err != nil {
+			r.error(wr, err.Error(), http.StatusNotFound)
+		} else {
+			r.respond(wr, newResponseWithKeyValue("done", true), http.StatusOK)
+		}
+	} else if req.Method == "PUT" {
+		if err := r.readBody(req, &vnet); err != nil {
+			r.error(wr, err.Error(), http.StatusInternalServerError)
+		} else if err = r.vmrun.ChangeNetworkInterface(vmuuid, vnet.Vnet, vnet.Nic); err != nil {
+			r.error(wr, err.Error(), http.StatusNotFound)
+		} else {
+			r.respond(wr, newResponseWithKeyValue("done", true), http.StatusOK)
+		}
+	} else {
+		r.notSupported(wr)
 	}
 }
 
@@ -395,6 +448,28 @@ func (r *RegexpHandler) handleListVirtualMachines(wr http.ResponseWriter, req *h
 			r.respond(wr, newResponse(vms), http.StatusOK)
 		}
 	} else {
-		r.notFound(wr)
+		r.notSupported(wr)
 	}
+}
+
+func (r *RegexpHandler) readBody(req *http.Request, target interface{}) error {
+	defer req.Body.Close()
+
+	if body, err := io.ReadAll(req.Body); err != nil {
+		return err
+	} else {
+		contentType := req.Header.Get("Content-Type")
+
+		if strings.Contains(contentType, "xml") {
+			if err = xml.Unmarshal(body, target); err != nil {
+				return err
+			}
+		} else if strings.Contains(contentType, "json") {
+			if err = json.Unmarshal(body, target); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }

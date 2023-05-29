@@ -14,7 +14,7 @@ type VMXMap struct {
 	keys     map[string]string
 }
 
-func (vmx *VMXMap) Cleanup() {
+func (vmx *VMXMap) Cleanup(removeCard bool) {
 	vmx.Delete("instance-id")
 	vmx.Delete("hostname")
 	vmx.Delete("seedfrom")
@@ -25,7 +25,7 @@ func (vmx *VMXMap) Cleanup() {
 
 	// Remove ethernet cards & old guest info
 	for _, key := range vmx.Keys() {
-		if strings.HasPrefix(key, "ethernet") || strings.HasPrefix(key, "guestinfo") {
+		if (removeCard && strings.HasPrefix(key, "ethernet")) || strings.HasPrefix(key, "guestinfo") {
 			vmx.Delete(key)
 		}
 	}

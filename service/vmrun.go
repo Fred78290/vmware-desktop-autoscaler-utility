@@ -14,60 +14,61 @@ import (
 	"github.com/Fred78290/vmrest-go-client/client"
 	"github.com/Fred78290/vmrest-go-client/client/model"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/settings"
+	"github.com/Fred78290/vmware-desktop-autoscaler-utility/status"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utility"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/utils"
 	"github.com/hashicorp/go-hclog"
 	vagrant_utility "github.com/hashicorp/vagrant-vmware-desktop/go_src/vagrant-vmware-utility/utility"
 	codes "google.golang.org/grpc/codes"
-	status "google.golang.org/grpc/status"
 )
 
 const (
 	vmrunlistfailed = "vmrun list failed"
 	vmrunstopfailed = "vmrun stop failed"
+	toolsnotrunning = "not running"
 	failedtofindvm  = "failed to find VM: %s, reason: %v"
 )
 
 var pcislotnumber = []string{"160", "192", "161", "193", "225"}
 
 type EthernetCard struct {
-	AddressType          string
-	BsdName              string
-	ConnectionType       string
-	DisplayName          string
-	MacAddress           string
-	MacAddressOffset     int
-	LinkStatePropagation bool
-	PciSlotNumber        int
-	Present              bool
-	VirtualDev           string
-	Vnet                 string
-	IP4Address           string
+	AddressType          string `json:"addressType,omitempty"`
+	BsdName              string `json:"bsdName,omitempty"`
+	ConnectionType       string `json:"connectionType,omitempty"`
+	DisplayName          string `json:"displayName,omitempty"`
+	MacAddress           string `json:"macaddress,omitempty"`
+	MacAddressOffset     int    `json:"macaddressOffset,omitempty"`
+	LinkStatePropagation bool   `json:"linkStatePropagation,omitempty"`
+	PciSlotNumber        int    `json:"pciSlotNumber,omitempty"`
+	Present              bool   `json:"present"`
+	VirtualDev           string `json:"virtualDev,omitempty"`
+	Vnet                 string `json:"vnet,omitempty"`
+	IP4Address           string `json:"ip4address,omitempty"`
 }
 
 type VirtualMachineStatus struct {
-	Powered       bool
-	EthernetCards []*EthernetCard
+	Powered       bool            `json:"powered"`
+	EthernetCards []*EthernetCard `json:"ethernet,omitempty"`
 }
 
 type NetworkInterface struct {
-	MacAddress     string
-	Vnet           string
-	ConnectionType string
-	Device         string
-	BsdName        string
-	DisplayName    string
+	MacAddress     string `json:"macaddress,omitempty"`
+	Vnet           string `json:"vnet,omitempty"`
+	ConnectionType string `json:"type,omitempty"`
+	Device         string `json:"device,omitempty"`
+	BsdName        string `json:"bsdName,omitempty"`
+	DisplayName    string `json:"displayName,omitempty"`
 }
 
 type CreateVirtualMachine struct {
-	Template     string
-	Name         string
-	Vcpus        int
-	Memory       int
-	DiskSizeInMb int
-	Networks     []*NetworkInterface
-	GuestInfos   map[string]string
-	Linked       bool
+	Template     string              `json:"template,omitempty"`
+	Name         string              `json:"name,omitempty"`
+	Vcpus        int                 `json:"vcpus,omitempty"`
+	Memory       int                 `json:"memory,omitempty"`
+	DiskSizeInMb int                 `json:"diskSizeInMB,omitempty"`
+	Networks     []*NetworkInterface `json:"networks,omitempty"`
+	GuestInfos   map[string]string   `json:"guestInfos,omitempty"`
+	Linked       bool                `json:"linked,omitempty"`
 }
 
 type Vmrun interface {
@@ -86,6 +87,8 @@ type Vmrun interface {
 	VirtualMachineByName(vmname string) (*VirtualMachine, error)
 	VirtualMachineByUUID(vmuuid string) (*VirtualMachine, error)
 	ListVirtualMachines() ([]*VirtualMachine, error)
+	AddNetworkInterface(vmuuid, vnet string) error
+	ChangeNetworkInterface(vmuuid, vnet string, nic int) error
 }
 
 type VmrunExe struct {
@@ -101,13 +104,14 @@ type VmrunExe struct {
 }
 
 type VirtualMachine struct {
-	Path    string
-	Uuid    string
-	Name    string
-	Vcpus   int
-	Memory  int
-	Powered bool
-	Address string
+	Path        string `json:"path,omitempty"`
+	Uuid        string `json:"uuid,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Vcpus       int    `json:"vcpus,omitempty"`
+	Memory      int    `json:"memory,omitempty"`
+	Powered     bool   `json:"powered"`
+	Address     string `json:"ip4address,omitempty"`
+	ToolsStatus string `json:"toolsStatus,omitempty"`
 }
 
 func NewVmrun(c *settings.CommonConfig, exePath, exeVdiskManager string, logger hclog.Logger) (Vmrun, error) {
@@ -150,11 +154,33 @@ func (v *VmrunExe) deleteCachedVM(vm *VirtualMachine) {
 }
 
 func (v *VmrunExe) stillExists(vm *VirtualMachine) bool {
-	if _, err := v.client.GetVM(vm.Uuid); err == nil {
-		return true
+	if utils.FileExists(vm.Path) {
+		if _, err := v.client.GetVM(vm.Uuid); err == nil {
+			return true
+		}
 	}
 
 	return false
+}
+
+func (v *VmrunExe) cachedVM(foundVM *VirtualMachine) (*VirtualMachine, error) {
+	var err error
+
+	if v.stillExists(foundVM) {
+		if foundVM.Powered, err = v.isRunningVm(foundVM); err != nil {
+			return foundVM, status.Errorf(codes.Unavailable, "failed to get power status for VM: %s, reason: %v", foundVM.Path, err)
+		} else if foundVM.Powered {
+			v.vmwareToolsStatus(foundVM)
+		} else {
+			foundVM.ToolsStatus = toolsnotrunning
+		}
+	} else {
+		v.deleteCachedVM(foundVM)
+
+		foundVM = nil
+	}
+
+	return foundVM, err
 }
 
 func (v *VmrunExe) fetchIPAddress(vmuuid string) (ip *model.InlineResponse200, err error) {
@@ -193,8 +219,13 @@ func (v *VmrunExe) fetchVM(vmuuid, vmx string) (vm *VirtualMachine, err error) {
 			vm.Name = name.Value
 			vm.Vcpus = info.Cpu.Processors
 			vm.Memory = info.Memory
-
 			vm.Powered, err = v.isRunningVm(vm)
+
+			if vm.Powered {
+				v.vmwareToolsStatus(vm)
+			} else {
+				vm.ToolsStatus = toolsnotrunning
+			}
 		}
 	}
 
@@ -348,6 +379,46 @@ func (v *VmrunExe) clone(template *VirtualMachine, name string) (newpath string,
 	}
 }
 
+func (v *VmrunExe) prepareEthernet(vmx *utils.VMXMap, inf *NetworkInterface, card int) {
+	darwin := vagrant_utility.IsBigSurMin()
+
+	ethernet := fmt.Sprintf("ethernet%d.", card)
+
+	vmx.Set(ethernet+"present", "TRUE")
+	vmx.Set(ethernet+"virtualDev", inf.Device)
+	vmx.Set(ethernet+"connectionType", inf.ConnectionType)
+	vmx.Set(ethernet+"linkStatePropagation.enable", "TRUE")
+	vmx.Set(ethernet+"pciSlotNumber", pcislotnumber[card])
+
+	if darwin {
+		if inf.BsdName != "" {
+			vmx.Set(ethernet+"bsdName", inf.BsdName)
+		}
+
+		if inf.DisplayName != "" {
+			vmx.Set(ethernet+"displayName", inf.DisplayName)
+		}
+	}
+
+	if inf.ConnectionType == "custom" {
+		if darwin {
+			vmx.Set(ethernet+"vnet", inf.Vnet)
+		} else {
+			vmx.Set(ethernet+"vnet", "/dev/"+inf.Vnet)
+		}
+	}
+
+	vmx.Delete(ethernet + "generatedAddress")
+	vmx.Delete(ethernet + "generatedAddressOffset")
+
+	if inf.MacAddress != "generated" {
+		vmx.Set(ethernet+"addressType", "static")
+		vmx.Set(ethernet+"address", inf.MacAddress)
+	} else {
+		vmx.Set(ethernet+"addressType", inf.MacAddress)
+	}
+}
+
 func (v *VmrunExe) prepareNetworkInterface(request *CreateVirtualMachine, vmx *utils.VMXMap) {
 	numCards := len(request.Networks)
 
@@ -356,38 +427,12 @@ func (v *VmrunExe) prepareNetworkInterface(request *CreateVirtualMachine, vmx *u
 	}
 
 	for card := 0; card < numCards; card++ {
-		inf := request.Networks[card]
-		ethernet := fmt.Sprintf("ethernet%d.", card)
-
-		vmx.Set(ethernet+"present", "TRUE")
-		vmx.Set(ethernet+"virtualDev", inf.Device)
-		vmx.Set(ethernet+"connectionType", inf.ConnectionType)
-		vmx.Set(ethernet+"linkStatePropagation.enable", "TRUE")
-		vmx.Set(ethernet+"pciSlotNumber", pcislotnumber[card])
-
-		if inf.BsdName != "" {
-			vmx.Set(ethernet+"bsdName", inf.BsdName)
-		}
-
-		if inf.DisplayName != "" {
-			vmx.Set(ethernet+"displayName", inf.DisplayName)
-		}
-
-		if inf.ConnectionType == "custom" {
-			vmx.Set(ethernet+"vnet", inf.Vnet)
-		}
-
-		if inf.MacAddress != "generated" {
-			vmx.Set(ethernet+"addressType", "static")
-			vmx.Set(ethernet+"address", inf.MacAddress)
-		} else {
-			vmx.Set(ethernet+"addressType", inf.MacAddress)
-		}
+		v.prepareEthernet(vmx, request.Networks[card], card)
 	}
 }
 
 func (v *VmrunExe) prepareVMX(request *CreateVirtualMachine, vmxpath string, vmx *utils.VMXMap) (string, error) {
-	vmx.Cleanup()
+	vmx.Cleanup(len(request.Networks) > 0)
 
 	vmx.Set("vmname", request.Name)
 	vmx.Set("numvcpus", strconv.Itoa(request.Vcpus))
@@ -624,28 +669,60 @@ func (v *VmrunExe) WaitForIP(vmuuid string) (string, error) {
 		address := ""
 
 		err = utils.PollImmediate(time.Second, v.timeout, func() (done bool, err error) {
-			cmd := exec.Command(v.exePath, "getGuestIPAddress", vm.Path)
-			exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
+			if ipaddress, err := v.client.GetIPAddress(vmuuid); err == nil && len(ipaddress.Ip) > 0 {
+				address = ipaddress.Ip
+				return true, nil
+			} else {
+				cmd := exec.Command(v.exePath, "getGuestIPAddress", vm.Path)
+				exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
 
-			if exitCode != 0 {
-				// Got it on linux
-				if strings.HasPrefix(out, "Error: Unable to get the IP address") {
-					return false, nil
+				if exitCode != 0 {
+					// Got it on linux
+					if strings.HasPrefix(out, "Error: Unable to get the IP address") || strings.HasPrefix(out, "Error: The VMware Tools are not running in the virtual machine") {
+						return false, nil
+					}
+
+					v.logger.Debug("vmrun getGuestIPAddress failed", "exitcode", exitCode)
+					v.logger.Trace("vmrun getGuestIPAddress failed", "output", out)
+
+					return false, status.Errorf(codes.Internal, "failed to get ip VM: %s, reason: %s", vmuuid, out)
 				}
 
-				v.logger.Debug("vmrun getGuestIPAddress failed", "exitcode", exitCode)
-				v.logger.Trace("vmrun getGuestIPAddress failed", "output", out)
+				address = strings.Trim(out, "\n")
 
-				return false, status.Errorf(codes.Internal, "failed to get ip VM: %s, reason: %s", vmuuid, out)
+				return true, nil
 			}
-
-			address = out
-
-			return true, nil
 		})
 
 		return address, err
 	}
+}
+
+func (v *VmrunExe) vmwareToolsStatus(vm *VirtualMachine) error {
+	// If we get IP address, assume vmware tools is running
+	if ipaddress, err := v.client.GetIPAddress(vm.Uuid); err == nil && len(ipaddress.Ip) > 0 {
+		vm.ToolsStatus = "running"
+	} else {
+		cmd := exec.Command(v.exePath, "checkToolsState", vm.Path)
+		exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
+
+		if exitCode != 0 {
+			v.logger.Debug("vmrun checkToolsState failed", "exitcode", exitCode)
+			v.logger.Trace("vmrun checkToolsState failed", "output", out)
+
+			return status.Errorf(codes.Internal, "failed to wait for tools running for VM: %s, reason: %s", vm.Uuid, out)
+		}
+
+		if strings.HasPrefix(out, "running") {
+			vm.ToolsStatus = "running"
+		} else if strings.HasPrefix(out, "installed") {
+			vm.ToolsStatus = "installed"
+		} else {
+			vm.ToolsStatus = strings.Trim(out, "\n")
+		}
+	}
+
+	return nil
 }
 
 func (v *VmrunExe) WaitForToolsRunning(vmuuid string) (bool, error) {
@@ -657,25 +734,20 @@ func (v *VmrunExe) WaitForToolsRunning(vmuuid string) (bool, error) {
 		result := false
 
 		err = utils.PollImmediate(time.Second, v.timeout, func() (done bool, err error) {
-			cmd := exec.Command(v.exePath, "checkToolsState", vm.Path)
-			exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
+			if err := v.vmwareToolsStatus(vm); err != nil {
+				return false, err
+			} else {
+				if vm.ToolsStatus == "running" {
+					result = true
 
-			if exitCode != 0 {
-				v.logger.Debug("vmrun checkToolsState failed", "exitcode", exitCode)
-				v.logger.Trace("vmrun checkToolsState failed", "output", out)
+					return true, nil
+				} else if vm.ToolsStatus == "installed" {
+					return false, nil
+				}
 
-				return false, status.Errorf(codes.Internal, "failed to wait for tools running for VM: %s, reason: %s", vmuuid, out)
 			}
 
-			if strings.HasPrefix(out, "running") {
-				result = true
-
-				return true, nil
-			} else if strings.HasPrefix(out, "installed") {
-				return false, nil
-			}
-
-			return false, status.Errorf(codes.Internal, "failed to wait for tools running for VM: %s, reason: %s", vmuuid, out)
+			return false, status.Errorf(codes.Internal, "failed to wait for tools running for VM: %s, reason: %s", vmuuid, vm.ToolsStatus)
 		})
 
 		return result, err
@@ -694,34 +766,36 @@ func (v *VmrunExe) SetAutoStart(vmuuid string, autostart bool) (bool, error) {
 	return autostart, nil
 }
 
-func (v *VmrunExe) findVM(vmname string, foundVM *VirtualMachine) {
-	if vms, err := v.client.GetAllVMs(); err == nil {
+func (v *VmrunExe) findVM(vmname string) (*VirtualMachine, error) {
+	if vms, err := v.client.GetAllVMs(); err != nil {
+		return nil, err
+	} else {
 		for _, vm := range vms {
 			if name, err := v.client.GetVMParams(vm.Id, "vmname"); err == nil {
 				if name.Value == vmname {
-					if foundVM, err = v.fetchVM(vm.Id, vm.Path); err == nil {
+					if foundVM, err := v.fetchVM(vm.Id, vm.Path); err == nil {
 						v.cachebyuuid[vm.Id] = foundVM
 						v.cachebyvmx[vm.Path] = foundVM
 						v.cachebyvmx[foundVM.Name] = foundVM
+
+						return foundVM, nil
 					}
 				}
 			}
 		}
 	}
+
+	return nil, status.Errorf(codes.NotFound, "vm with name: %s not found", vmname)
 }
 
 func (v *VmrunExe) VirtualMachineByName(vmname string) (foundVM *VirtualMachine, err error) {
 	var found bool
 
 	if foundVM, found = v.cachebyname[vmname]; !found {
-		v.findVM(vmname, foundVM)
-	} else {
-		if foundVM.Powered, err = v.isRunningVm(foundVM); err != nil {
-			return foundVM, status.Errorf(codes.Unavailable, "failed to get power status for VM: %s, reason: %v", foundVM.Path, err)
-		}
-	}
-
-	if foundVM == nil {
+		return v.findVM(vmname)
+	} else if foundVM, err = v.cachedVM(foundVM); err != nil {
+		return nil, err
+	} else if foundVM == nil {
 		return nil, status.Errorf(codes.NotFound, "vm with name: %s not found", vmname)
 	}
 
@@ -753,17 +827,9 @@ func (v *VmrunExe) VirtualMachineByUUID(vmuuid string) (foundVM *VirtualMachine,
 			return nil, err
 		}
 
-	} else if v.stillExists(foundVM) {
-		if foundVM.Powered, err = v.isRunningVm(foundVM); err != nil {
-			return foundVM, status.Errorf(codes.Unavailable, "failed to get power status for VM: %s, reason: %v", vmuuid, err)
-		}
-	} else {
-		v.deleteCachedVM(foundVM)
-
-		foundVM = nil
-	}
-
-	if foundVM == nil {
+	} else if foundVM, err = v.cachedVM(foundVM); err != nil {
+		return nil, err
+	} else if foundVM == nil {
 		return nil, status.Errorf(codes.NotFound, "vm with uuid: %s not found", vmuuid)
 	}
 
@@ -781,5 +847,97 @@ func (v *VmrunExe) ListVirtualMachines() ([]*VirtualMachine, error) {
 		}
 
 		return values, nil
+	}
+}
+
+func (v *VmrunExe) getNetworkInfos(vnet string) (*model.Network, error) {
+	if networks, err := v.client.GetAllNetworks(); err != nil {
+		return nil, err
+	} else {
+		for _, network := range networks.Vmnets {
+			if network.Name == vnet {
+				return &network, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("vmnet: %s, not found", vnet)
+}
+
+func (v *VmrunExe) setCustomInterface(vm *VirtualMachine, vmnet string, inetIndex int) (*utils.VMXMap, error) {
+	if vmx, err := utils.LoadVMX(vm.Path); err != nil {
+		return nil, err
+	} else {
+		inf := &NetworkInterface{
+			MacAddress:     "generated",
+			Vnet:           vmnet,
+			ConnectionType: "custom",
+			Device:         "vmxnet3",
+		}
+
+		v.prepareEthernet(vmx, inf, inetIndex)
+
+		return vmx, nil
+	}
+}
+
+func (v *VmrunExe) AddNetworkInterface(vmuuid, vmnet string) error {
+
+	if found, err := v.VirtualMachineByUUID(vmuuid); err != nil {
+		return err
+	} else if network, err := v.getNetworkInfos(vmnet); err != nil {
+		return err
+	} else if nics, err := v.GetNicInfo(vmuuid); err != nil {
+		return err
+	} else {
+		var vmx *utils.VMXMap
+
+		inetIndex := len(nics.Nics)
+		if network.Type == "bridged" && vmnet != "vmnet0" {
+			network.Type = "custom"
+		}
+
+		if network.Type == "custom" {
+			if vmx, err = v.setCustomInterface(found, vmnet, inetIndex); err != nil {
+				return err
+			}
+		} else if nic, err := v.client.CreateNICDevice(vmuuid, &model.NicDeviceParameter{Type: network.Type}); err != nil {
+			return err
+		} else if vmx, err = utils.LoadVMX(found.Path); err != nil {
+			return err
+		} else {
+			vmx.Set(fmt.Sprintf("ethernet%d.virtualDev", nic.Index-1), "vmxnet3")
+		}
+
+		return vmx.Save(found.Path)
+	}
+}
+
+func (v *VmrunExe) ChangeNetworkInterface(vmuuid, vmnet string, nic int) error {
+	if found, err := v.VirtualMachineByUUID(vmuuid); err != nil {
+		return err
+	} else if network, err := v.getNetworkInfos(vmnet); err != nil {
+		return err
+	} else {
+		var vmx *utils.VMXMap
+
+		inetIndex := nic - 1
+		if network.Type == "bridged" && vmnet != "vmnet0" {
+			network.Type = "custom"
+		}
+
+		if network.Type == "custom" {
+			if vmx, err = v.setCustomInterface(found, vmnet, inetIndex); err != nil {
+				return err
+			}
+		} else if _, err := v.client.UpdateNICDevice(vmuuid, nic, &model.NicDeviceParameter{Type: network.Type}); err != nil {
+			return err
+		} else if vmx, err = utils.LoadVMX(found.Path); err != nil {
+			return err
+		} else {
+			vmx.Set(fmt.Sprintf("ethernet%d.virtualDev", inetIndex), "vmxnet3")
+		}
+
+		return vmx.Save(found.Path)
 	}
 }
