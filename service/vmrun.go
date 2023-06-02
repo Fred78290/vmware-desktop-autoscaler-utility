@@ -97,6 +97,7 @@ type VmrunExe struct {
 	logger          hclog.Logger
 	timeout         time.Duration
 	vmfolder        string
+	clonevm         bool
 	cachebyuuid     map[string]*VirtualMachine
 	cachebyvmx      map[string]*VirtualMachine
 	cachebyname     map[string]*VirtualMachine
@@ -361,7 +362,6 @@ func (v *VmrunExe) expandDisk(vmxpath string, diskSizeInMb int, vmx *utils.VMXMa
 }
 
 func (v *VmrunExe) clone(template *VirtualMachine, name string) (newpath string, err error) {
-
 	if newpath, err = v.createVmPath(name); err != nil {
 		return newpath, err
 	} else {
@@ -459,7 +459,72 @@ func (v *VmrunExe) prepareVMX(request *CreateVirtualMachine, vmxpath string, vmx
 	}
 }
 
+func (v *VmrunExe) prepareVM(request *CreateVirtualMachine, vm *VirtualMachine) (err error) {
+	var vmx *utils.VMXMap
+
+	if vmx, err = utils.LoadVMX(vm.Path); err != nil {
+		return status.Errorf(codes.FailedPrecondition, "failed to load VMX: %s, reason: %v", vm.Path, err)
+	}
+
+	vmx.Cleanup(len(request.Networks) > 0)
+
+	vmx.Set("vmname", request.Name)
+	vmx.Set("numvcpus", strconv.Itoa(request.Vcpus))
+	vmx.Set("memsize", strconv.Itoa(request.Memory))
+
+	// Set new guest infos
+	if request.GuestInfos != nil {
+		for k, v := range request.GuestInfos {
+			vmx.Set("guestinfo."+k, v)
+		}
+	}
+
+	v.prepareNetworkInterface(request, vmx)
+
+	if err = vmx.Save(vm.Path); err != nil {
+		return status.Errorf(codes.FailedPrecondition, "failed to save VMX: %s, reason: %v", vm.Path, err)
+	}
+
+	if err = v.expandDisk(vm.Path, request.DiskSizeInMb, vmx); err != nil {
+		return status.Errorf(codes.FailedPrecondition, "failed to prepare VM: %s, reason: %v", vm.Path, err)
+	}
+
+	return
+}
+
+func (v *VmrunExe) createVM(template *VirtualMachine, name string) (vm *VirtualMachine, err error) {
+	var infos *model.VmInformation
+
+	if infos, err = v.client.CreateVM(&model.VmCloneParameter{ParentId: template.Uuid, Name: name}); err != nil {
+		return
+	}
+
+	return v.VirtualMachineByUUID(infos.Id)
+}
+
 func (v *VmrunExe) Create(request *CreateVirtualMachine) (*VirtualMachine, error) {
+	if v.clonevm {
+		return v.createWithVMRun(request)
+	} else {
+		return v.createWithVMRest(request)
+	}
+}
+
+func (v *VmrunExe) createWithVMRest(request *CreateVirtualMachine) (*VirtualMachine, error) {
+	if _, err := v.VirtualMachineByName(request.Name); err == nil {
+		return nil, status.Errorf(codes.AlreadyExists, "VM named: %s, already exists", request.Name)
+	} else if template, err := v.VirtualMachineByUUID(request.Template); err != nil {
+		return nil, status.Errorf(codes.NotFound, "Template: %s, not found", request.Template)
+	} else if vm, err := v.createVM(template, request.Name); err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "failed to create VM: %s, reason: %v", template.Path, err)
+	} else if err := v.prepareVM(request, vm); err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "failed to prepare VM: %s, reason: %v", template.Path, err)
+	} else {
+		return vm, nil
+	}
+}
+
+func (v *VmrunExe) createWithVMRun(request *CreateVirtualMachine) (*VirtualMachine, error) {
 	if _, err := v.VirtualMachineByName(request.Name); err == nil {
 		return nil, status.Errorf(codes.AlreadyExists, "VM named: %s, already exists", request.Name)
 	} else if template, err := v.VirtualMachineByUUID(request.Template); err != nil {
@@ -477,12 +542,14 @@ func (v *VmrunExe) Create(request *CreateVirtualMachine) (*VirtualMachine, error
 	}
 }
 
-func (v *VmrunExe) Delete(vmuuid string) (bool, error) {
+func (v *VmrunExe) deleteWithVMRun(vmuuid string) (bool, error) {
 	if found, err := v.VirtualMachineByUUID(vmuuid); err != nil {
 		return false, status.Errorf(codes.NotFound, failedtofindvm, vmuuid, err)
 	} else if found.Powered {
 		return false, status.Errorf(codes.FailedPrecondition, "failed to delete VM: %s, reason: powered", vmuuid)
 	} else {
+		v.deleteCachedVM(found)
+
 		cmd := exec.Command(v.exePath, "deleteVM", found.Path)
 		exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
 
@@ -495,6 +562,28 @@ func (v *VmrunExe) Delete(vmuuid string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (v *VmrunExe) deleteWithVMRest(vmuuid string) (bool, error) {
+	if found, err := v.VirtualMachineByUUID(vmuuid); err != nil {
+		return false, status.Errorf(codes.NotFound, failedtofindvm, vmuuid, err)
+	} else if found.Powered {
+		return false, status.Errorf(codes.FailedPrecondition, "failed to delete VM: %s, reason: powered", vmuuid)
+	} else if err = v.client.DeleteVM(vmuuid); err != nil {
+		return false, status.Errorf(codes.Internal, "failed to delete VM: %s, reason: %v", vmuuid, err)
+	} else {
+		v.deleteCachedVM(found)
+	}
+
+	return true, nil
+}
+
+func (v *VmrunExe) Delete(vmuuid string) (bool, error) {
+	if v.clonevm {
+		return v.deleteWithVMRun(vmuuid)
+	} else {
+		return v.deleteWithVMRest(vmuuid)
+	}
 }
 
 func (v *VmrunExe) PowerState(vmuuid string) (bool, error) {
@@ -810,12 +899,14 @@ func (v *VmrunExe) fetchAndCacheVM(vmuuid string) (foundVM *VirtualMachine, err 
 					return nil, status.Errorf(codes.Internal, "error to fetch vm: %s, reason: %v", vmuuid, err)
 				} else {
 					v.cacheVM(foundVM)
+
+					return foundVM, nil
 				}
 			}
 		}
 	}
 
-	return
+	return nil, status.Errorf(codes.NotFound, "vm not found:%s", vmuuid)
 }
 
 func (v *VmrunExe) VirtualMachineByUUID(vmuuid string) (foundVM *VirtualMachine, err error) {

@@ -103,7 +103,7 @@ func (r *RegexpHandler) handleVmrestProxy(wr http.ResponseWriter, req *http.Requ
 		})
 
 		http.Error(wr, msg, code)
-		r.logger.Error("ServeHTTP: %v", err)
+		r.logger.Error(fmt.Sprintf("ServeHTTP: %v", err))
 	}
 
 	forwardResponse := func(resp *http.Response) {
@@ -117,48 +117,44 @@ func (r *RegexpHandler) handleVmrestProxy(wr http.ResponseWriter, req *http.Requ
 		io.Copy(wr, resp.Body)
 	}
 
-	if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
-		httperror(http.StatusBadRequest, fmt.Errorf("unsupported protocal scheme "+req.URL.Scheme))
-	} else {
-		var vmrestdriver *driver.VmrestDriver
-		var ok bool
+	var vmrestdriver *driver.VmrestDriver
+	var ok bool
 
-		delHopHeaders(req.Header)
+	delHopHeaders(req.Header)
 
-		if vmrestdriver, ok = r.api.Driver.(*driver.VmrestDriver); !ok {
-			target := fmt.Sprintf("http://localhost:8697%s", req.URL.Path)
+	if vmrestdriver, ok = r.api.Driver.(*driver.VmrestDriver); !ok {
+		target := fmt.Sprintf("http://localhost:8697%s", req.URL.Path)
 
-			if newreq, err := http.NewRequest(req.Method, target, req.Body); err != nil {
-				httperror(http.StatusBadRequest, fmt.Errorf("unable to create request: %v", err))
-			} else {
-				copyHeader(req.Header, newreq.Header)
-
-				client := &http.Client{
-					Timeout: 30 * time.Second,
-					Transport: &http.Transport{
-						TLSClientConfig: &tls.Config{
-							InsecureSkipVerify: true,
-						},
-					},
-				}
-
-				if clientIP, _, err := net.SplitHostPort(req.RemoteAddr); err == nil {
-					appendHostToXForwardHeader(req.Header, clientIP)
-				}
-
-				req = newreq
-
-				if resp, err := client.Do(req); err != nil {
-					httperror(http.StatusInternalServerError, err)
-				} else {
-					forwardResponse(resp)
-				}
-			}
-		} else if resp, err := vmrestdriver.Request(req.Method, req.URL.Path, req.Body); err == nil {
-			forwardResponse(resp)
+		if newreq, err := http.NewRequest(req.Method, target, req.Body); err != nil {
+			httperror(http.StatusBadRequest, fmt.Errorf("unable to create request: %v", err))
 		} else {
-			httperror(http.StatusInternalServerError, err)
+			copyHeader(req.Header, newreq.Header)
+
+			client := &http.Client{
+				Timeout: 30 * time.Second,
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						InsecureSkipVerify: true,
+					},
+				},
+			}
+
+			if clientIP, _, err := net.SplitHostPort(req.RemoteAddr); err == nil {
+				appendHostToXForwardHeader(req.Header, clientIP)
+			}
+
+			req = newreq
+
+			if resp, err := client.Do(req); err != nil {
+				httperror(http.StatusInternalServerError, err)
+			} else {
+				forwardResponse(resp)
+			}
 		}
+	} else if resp, err := vmrestdriver.Request(req.Method, req.URL.Path[len("/api/"):], req.Body); err == nil {
+		forwardResponse(resp)
+	} else {
+		httperror(http.StatusInternalServerError, err)
 	}
 }
 

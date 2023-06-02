@@ -597,7 +597,7 @@ func NewVmrestDriver(ctx context.Context, c *settings.CommonConfig, f Driver, lo
 
 			if _, err = d.Vmnets(); err != nil {
 				logger.Error("vmrest driver failed to access networking functions, using fallback", "status", "invalid", "error", err)
-				return f, nil
+				return f, err
 			}
 
 			// License detection is not always correct so we need to validate
