@@ -10,6 +10,7 @@
 	"vcpus": 2,
 	"memory": 2048,
 	"disk-size": 20480,
+	"timeout": 300,
 	"cloud-init": {
 		"package_update": false,
 		"package_upgrade": false,

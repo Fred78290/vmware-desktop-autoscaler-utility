@@ -69,6 +69,13 @@ type CreateVirtualMachine struct {
 	Networks     []*NetworkInterface `json:"networks,omitempty"`
 	GuestInfos   map[string]string   `json:"guestInfos,omitempty"`
 	Linked       bool                `json:"linked,omitempty"`
+	Register     bool                `json:"register,omitempty"`
+}
+
+type networkInfo struct {
+	index int
+	mac   string
+	ip    []string
 }
 
 type Vmrun interface {
@@ -77,12 +84,12 @@ type Vmrun interface {
 	Create(request *CreateVirtualMachine) (*VirtualMachine, error)
 	Delete(vmuuid string) (bool, error)
 	PowerOn(vmuuid string) (bool, error)
-	PowerOff(vmuuid string) (bool, error)
+	PowerOff(vmuuid, mode string) (bool, error)
 	PowerState(vmuuid string) (bool, error)
 	ShutdownGuest(vmuuid string) (bool, error)
 	Status(vmuuid string) (*VirtualMachineStatus, error)
-	WaitForIP(vmuuid string) (string, error)
-	WaitForToolsRunning(vmuuid string) (bool, error)
+	WaitForIP(vmuuid string, timeout time.Duration) (string, error)
+	WaitForToolsRunning(vmuuid string, timeout time.Duration) (bool, error)
 	SetAutoStart(vmuuid string, autostart bool) (bool, error)
 	VirtualMachineByName(vmname string) (*VirtualMachine, error)
 	VirtualMachineByUUID(vmuuid string) (*VirtualMachine, error)
@@ -451,11 +458,18 @@ func (v *VmrunExe) prepareVMX(request *CreateVirtualMachine, vmxpath string, vmx
 		return "", err
 	}
 
-	if result, err := v.client.RegisterVM(&model.VmRegisterParameter{Name: request.Name, Path: vmxpath}); err != nil {
-		v.logger.Debug("failed to register vm", "name", request.Name, "path", vmxpath, "error", err)
+	if request.Register {
+		if result, err := v.client.RegisterVM(&model.VmRegisterParameter{Name: request.Name, Path: vmxpath}); err != nil {
+			v.logger.Debug("failed to register vm", "name", request.Name, "path", vmxpath, "error", err)
+			return "", err
+		} else {
+			return result.Id, nil
+		}
+	} else if vm, err := v.VirtualMachineByUUID(request.Template); err != nil {
 		return "", err
 	} else {
-		return result.Id, nil
+
+		return vm.Uuid, nil
 	}
 }
 
@@ -486,7 +500,14 @@ func (v *VmrunExe) prepareVM(request *CreateVirtualMachine, vm *VirtualMachine) 
 	}
 
 	if err = v.expandDisk(vm.Path, request.DiskSizeInMb, vmx); err != nil {
-		return status.Errorf(codes.FailedPrecondition, "failed to prepare VM: %s, reason: %v", vm.Path, err)
+		return status.Errorf(codes.FailedPrecondition, "failed to expand disk: %s, reason: %v", vm.Path, err)
+	}
+
+	if request.Register {
+		if _, err = v.client.RegisterVM(&model.VmRegisterParameter{Name: request.Name, Path: vm.Path}); err != nil {
+			v.logger.Debug("failed to register vm", "name", request.Name, "path", vm.Path, "error", err)
+			return err
+		}
 	}
 
 	return
@@ -534,9 +555,9 @@ func (v *VmrunExe) createWithVMRun(request *CreateVirtualMachine) (*VirtualMachi
 	} else if vmx, err := utils.LoadVMX(vmxpath); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "failed to load VMX: %s, reason: %v", vmxpath, err)
 	} else if vmuuid, err := v.prepareVMX(request, vmxpath, vmx); err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "failed to prepare VM: %s, reason: %v", template.Path, err)
+		return nil, status.Errorf(codes.FailedPrecondition, "failed to prepare VMX: %s, reason: %v", template.Path, err)
 	} else if err = v.expandDisk(vmxpath, request.DiskSizeInMb, vmx); err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "failed to prepare VM: %s, reason: %v", template.Path, err)
+		return nil, status.Errorf(codes.FailedPrecondition, "failed to expand disk of VM: %s, reason: %v", template.Path, err)
 	} else {
 		return v.VirtualMachineByUUID(vmuuid)
 	}
@@ -616,13 +637,13 @@ func (v *VmrunExe) PowerOn(vmuuid string) (bool, error) {
 	return true, nil
 }
 
-func (v *VmrunExe) PowerOff(vmuuid string) (bool, error) {
+func (v *VmrunExe) PowerOff(vmuuid, mode string) (bool, error) {
 	if found, err := v.VirtualMachineByUUID(vmuuid); err != nil {
 		return false, status.Errorf(codes.NotFound, failedtofindvm, vmuuid, err)
 	} else if !found.Powered {
 		return true, nil
 	} else {
-		cmd := exec.Command(v.exePath, "stop", found.Path, "hard")
+		cmd := exec.Command(v.exePath, "stop", found.Path, mode)
 		exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
 
 		if exitCode != 0 {
@@ -658,16 +679,14 @@ func (v *VmrunExe) ShutdownGuest(vmuuid string) (bool, error) {
 	return true, nil
 }
 
-func (v *VmrunExe) getNicAddress(macaddress string, stack *model.NicIpStackAll) string {
+func (v *VmrunExe) getNicAddress(macaddress string, stack []networkInfo) string {
 
-	if stack != nil && stack.Nics != nil {
-		for _, nic := range stack.Nics {
-			if nic.Mac == macaddress {
-				for _, address := range nic.Ip {
-					if ip, err := netip.ParseAddr(strings.Split(address, "/")[0]); err == nil {
-						if ip.Is4() {
-							return ip.String()
-						}
+	for _, nic := range stack {
+		if nic.mac == macaddress {
+			for _, address := range nic.ip {
+				if ip, err := netip.ParseAddr(strings.Split(address, "/")[0]); err == nil {
+					if ip.Is4() {
+						return ip.String()
 					}
 				}
 			}
@@ -677,19 +696,59 @@ func (v *VmrunExe) getNicAddress(macaddress string, stack *model.NicIpStackAll) 
 	return ""
 }
 
-func (v *VmrunExe) GetNicInfo(vmuuid string) (nics *model.NicIpStackAll, err error) {
+func (v *VmrunExe) getNicInfoPowered(vm *VirtualMachine) (infos []networkInfo, err error) {
+	var nics *model.NicIpStackAll
 
-	if nics, err = v.client.GetNicInfo(vmuuid); err != nil {
+	if nics, err = v.client.GetNicInfo(vm.Uuid); err != nil {
 		if ge, ok := err.(client.GenericSwaggerError); ok {
 			if me, ok := ge.Model().(model.ErrorModel); ok {
 				if me.Code == 106 {
-					return nics, nil
+					err = nil
 				}
 			}
 		}
 	}
 
+	if nics != nil {
+		infos = make([]networkInfo, 0, len(nics.Nics))
+
+		for index, nic := range nics.Nics {
+			infos = append(infos, networkInfo{
+				index: index,
+				mac:   nic.Mac,
+				ip:    nic.Ip,
+			})
+		}
+	}
+
 	return
+}
+
+func (v *VmrunExe) getNicInfoNotPowered(vm *VirtualMachine) (infos []networkInfo, err error) {
+	var nics *model.NicDevices
+
+	if nics, err = v.client.GetAllNICDevices(vm.Uuid); nics != nil {
+		infos = make([]networkInfo, 0, len(nics.Nics))
+
+		for _, nic := range nics.Nics {
+			infos = append(infos, networkInfo{
+				index: nic.Index,
+				mac:   nic.MacAddress,
+				ip:    nil,
+			})
+		}
+	}
+
+	return
+}
+
+func (v *VmrunExe) getNicInfo(vm *VirtualMachine) (infos []networkInfo, err error) {
+
+	if vm.Powered {
+		return v.getNicInfoPowered(vm)
+	} else {
+		return v.getNicInfoNotPowered(vm)
+	}
 }
 
 func (v *VmrunExe) Status(vmuuid string) (*VirtualMachineStatus, error) {
@@ -697,7 +756,7 @@ func (v *VmrunExe) Status(vmuuid string) (*VirtualMachineStatus, error) {
 		return nil, err
 	} else if vmx, err := utils.LoadVMX(vm.Path); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "can't load vmx for %s", vm.Path)
-	} else if nics, err := v.GetNicInfo(vmuuid); err != nil {
+	} else if nics, err := v.getNicInfo(vm); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "can't get nics for vm %s, reason: %v", vm.Path, err)
 	} else {
 		card := 0
@@ -749,7 +808,7 @@ func (v *VmrunExe) Status(vmuuid string) (*VirtualMachineStatus, error) {
 	}
 }
 
-func (v *VmrunExe) WaitForIP(vmuuid string) (string, error) {
+func (v *VmrunExe) WaitForIP(vmuuid string, timeout time.Duration) (string, error) {
 	if vm, err := v.VirtualMachineByUUID(vmuuid); err != nil {
 		return "", err
 	} else if !vm.Powered {
@@ -757,8 +816,8 @@ func (v *VmrunExe) WaitForIP(vmuuid string) (string, error) {
 	} else {
 		address := ""
 
-		err = utils.PollImmediate(time.Second, v.timeout, func() (done bool, err error) {
-			if ipaddress, err := v.client.GetIPAddress(vmuuid); err == nil && len(ipaddress.Ip) > 0 {
+		err = utils.PollImmediate(5*time.Second, timeout, func() (done bool, err error) {
+			if ipaddress, _ := v.client.GetIPAddress(vmuuid); ipaddress != nil && len(ipaddress.Ip) > 0 {
 				address = ipaddress.Ip
 				return true, nil
 			} else {
@@ -814,7 +873,7 @@ func (v *VmrunExe) vmwareToolsStatus(vm *VirtualMachine) error {
 	return nil
 }
 
-func (v *VmrunExe) WaitForToolsRunning(vmuuid string) (bool, error) {
+func (v *VmrunExe) WaitForToolsRunning(vmuuid string, timeout time.Duration) (bool, error) {
 	if vm, err := v.VirtualMachineByUUID(vmuuid); err != nil {
 		return false, err
 	} else if !vm.Powered {
@@ -822,7 +881,7 @@ func (v *VmrunExe) WaitForToolsRunning(vmuuid string) (bool, error) {
 	} else {
 		result := false
 
-		err = utils.PollImmediate(time.Second, v.timeout, func() (done bool, err error) {
+		err = utils.PollImmediate(time.Second, timeout, func() (done bool, err error) {
 			if err := v.vmwareToolsStatus(vm); err != nil {
 				return false, err
 			} else {
@@ -978,7 +1037,7 @@ func (v *VmrunExe) AddNetworkInterface(vmuuid, vmnet string) error {
 		return err
 	} else if network, err := v.getNetworkInfos(vmnet); err != nil {
 		return err
-	} else if nics, err := v.GetNicInfo(vmuuid); err != nil {
+	} else if nics, err := v.client.GetAllNICDevices(vmuuid); err != nil {
 		return err
 	} else {
 		var vmx *utils.VMXMap

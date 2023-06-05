@@ -26,9 +26,21 @@ type RestResponse struct {
 	Result interface{} `json:"result,omitempty"`
 }
 
+type DoneResponse struct {
+	Done bool `json:"done"`
+}
 type VMDetail struct {
 	*service.VirtualMachine
 	EthernetCards []*service.EthernetCard `json:"ethernet,omitempty"`
+}
+
+type ParamVnet struct {
+	Vnet string
+	Nic  int
+}
+
+type PowerOffMode struct {
+	Mode string
 }
 
 var hopHeaders = []string{
@@ -55,6 +67,14 @@ func newResponseWithKeyValue(keyvalues ...interface{}) RestResponse {
 
 	return RestResponse{
 		Result: result,
+	}
+}
+
+func newDoneResponse(done bool) RestResponse {
+	return RestResponse{
+		Result: DoneResponse{
+			Done: done,
+		},
 	}
 }
 
@@ -191,7 +211,7 @@ func (r *RegexpHandler) handleDeleteVirtualMachine(wr http.ResponseWriter, req *
 		if done, err := r.vmrun.Delete(params["vmuuid"]); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
+			r.respond(wr, newDoneResponse(done), http.StatusOK)
 		}
 	} else {
 		r.notSupported(wr)
@@ -210,7 +230,7 @@ func (r *RegexpHandler) handlePowerOnVirtualMachine(wr http.ResponseWriter, req 
 		if done, err := r.vmrun.PowerOn(params["vmuuid"]); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
+			r.respond(wr, newDoneResponse(done), http.StatusOK)
 		}
 	} else {
 		r.notSupported(wr)
@@ -221,15 +241,18 @@ func (r *RegexpHandler) handlePowerOffVirtualMachine(wr http.ResponseWriter, req
 	params := r.pathParams(req.URL.Path)
 
 	if req.Method == "PUT" {
+		var mode PowerOffMode
 		r.netLock.Lock()
 		defer r.netLock.Unlock()
 
 		r.logger.Debug("vm power off", "vmuuid", params["vmuuid"])
 
-		if done, err := r.vmrun.PowerOff(params["vmuuid"]); err != nil {
+		if err := r.readBody(req, &mode); err != nil {
+			r.error(wr, err.Error(), http.StatusInternalServerError)
+		} else if done, err := r.vmrun.PowerOff(params["vmuuid"], mode.Mode); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
+			r.respond(wr, newDoneResponse(done), http.StatusOK)
 		}
 	} else {
 		r.notSupported(wr)
@@ -267,7 +290,7 @@ func (r *RegexpHandler) handleShutdownGuestVirtualMachine(wr http.ResponseWriter
 		if done, err := r.vmrun.ShutdownGuest(params["vmuuid"]); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", done), http.StatusOK)
+			r.respond(wr, newDoneResponse(done), http.StatusOK)
 		}
 	} else {
 		r.notSupported(wr)
@@ -287,7 +310,13 @@ func (r *RegexpHandler) handleWaitForIP(wr http.ResponseWriter, req *http.Reques
 
 		r.logger.Debug("vm wait for ip", "vmuuid", params["vmuuid"])
 
-		if address, err := r.vmrun.WaitForIP(params["vmuuid"]); err != nil {
+		timeout := req.FormValue("timeout")
+
+		if timeout == "" {
+			timeout = "600"
+		}
+
+		if address, err := r.vmrun.WaitForIP(params["vmuuid"], time.Duration(utils.StrToInt(timeout))*time.Second); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
 			r.respond(wr, newResponseWithKeyValue("address", address), http.StatusOK)
@@ -304,9 +333,15 @@ func (r *RegexpHandler) handleWaitForToolsRunning(wr http.ResponseWriter, req *h
 		r.netLock.Lock()
 		defer r.netLock.Unlock()
 
+		timeout := req.FormValue("timeout")
+
+		if timeout == "" {
+			timeout = "600"
+		}
+
 		r.logger.Debug("vm wait tools running", "vmuuid", params["vmuuid"])
 
-		if running, err := r.vmrun.WaitForToolsRunning(params["vmuuid"]); err != nil {
+		if running, err := r.vmrun.WaitForToolsRunning(params["vmuuid"], time.Duration(utils.StrToInt(timeout))*time.Second); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
 			r.respond(wr, newResponseWithKeyValue("running", running), http.StatusOK)
@@ -387,11 +422,6 @@ func (r *RegexpHandler) handleVirtualMachineByUUID(wr http.ResponseWriter, req *
 	}
 }
 
-type ParamVnet struct {
-	Vnet string
-	Nic  int
-}
-
 func (r *RegexpHandler) handleNetworkInterface(wr http.ResponseWriter, req *http.Request) {
 	var vnet ParamVnet
 
@@ -416,7 +446,7 @@ func (r *RegexpHandler) handleNetworkInterface(wr http.ResponseWriter, req *http
 		} else if err = r.vmrun.AddNetworkInterface(vmuuid, vnet.Vnet); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", true), http.StatusOK)
+			r.respond(wr, newDoneResponse(true), http.StatusOK)
 		}
 	} else if req.Method == "PUT" {
 		if err := r.readBody(req, &vnet); err != nil {
@@ -424,7 +454,7 @@ func (r *RegexpHandler) handleNetworkInterface(wr http.ResponseWriter, req *http
 		} else if err = r.vmrun.ChangeNetworkInterface(vmuuid, vnet.Vnet, vnet.Nic); err != nil {
 			r.error(wr, err.Error(), http.StatusNotFound)
 		} else {
-			r.respond(wr, newResponseWithKeyValue("done", true), http.StatusOK)
+			r.respond(wr, newDoneResponse(true), http.StatusOK)
 		}
 	} else {
 		r.notSupported(wr)

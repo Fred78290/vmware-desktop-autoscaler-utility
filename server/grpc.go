@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/Fred78290/kubernetes-desktop-autoscaler/api"
 	"github.com/Fred78290/vmware-desktop-autoscaler-utility/driver"
@@ -246,7 +247,19 @@ func (g *Grpc) Create(ctx context.Context, req *api.CreateRequest) (*api.CreateR
 		})
 	}
 
-	if result, err := g.vmrun.Create(&service.CreateVirtualMachine{Template: req.Template, Name: req.Name, Vcpus: int(req.Vcpus), Memory: int(req.Memory), DiskSizeInMb: int(req.DiskSizeInMb), Networks: networks, GuestInfos: req.GuestInfos, Linked: req.Linked}); err != nil {
+	request := &service.CreateVirtualMachine{
+		Template:     req.Template,
+		Name:         req.Name,
+		Vcpus:        int(req.Vcpus),
+		Memory:       int(req.Memory),
+		DiskSizeInMb: int(req.DiskSizeInMb),
+		Networks:     networks,
+		GuestInfos:   req.GuestInfos,
+		Linked:       req.Linked,
+		Register:     req.Register,
+	}
+
+	if result, err := g.vmrun.Create(request); err != nil {
 		if _, ok := status.FromError(err); ok {
 			return nil, err
 		}
@@ -334,12 +347,12 @@ func (g *Grpc) PowerOn(ctx context.Context, req *api.VirtualMachineRequest) (*ap
 	}
 }
 
-func (g *Grpc) PowerOff(ctx context.Context, req *api.VirtualMachineRequest) (*api.PowerOffResponse, error) {
+func (g *Grpc) PowerOff(ctx context.Context, req *api.PowerOffRequest) (*api.PowerOffResponse, error) {
 	g.incrementInflight()
 
 	defer g.decrementInflight()
 
-	if result, err := g.vmrun.PowerOff(req.Identifier); err != nil {
+	if result, err := g.vmrun.PowerOff(req.Identifier, req.Mode); err != nil {
 		if _, ok := status.FromError(err); ok {
 			return nil, err
 		}
@@ -468,12 +481,12 @@ func (g *Grpc) Status(ctx context.Context, req *api.VirtualMachineRequest) (*api
 	}
 }
 
-func (g *Grpc) WaitForIP(ctx context.Context, req *api.VirtualMachineRequest) (*api.WaitForIPResponse, error) {
+func (g *Grpc) WaitForIP(ctx context.Context, req *api.WaitForIPRequest) (*api.WaitForIPResponse, error) {
 	g.incrementInflight()
 
 	defer g.decrementInflight()
 
-	if address, err := g.vmrun.WaitForIP(req.Identifier); err != nil {
+	if address, err := g.vmrun.WaitForIP(req.Identifier, time.Duration(req.TimeoutInSeconds)*time.Second); err != nil {
 		if _, ok := status.FromError(err); ok {
 			return nil, err
 		}
@@ -497,11 +510,11 @@ func (g *Grpc) WaitForIP(ctx context.Context, req *api.VirtualMachineRequest) (*
 	}
 }
 
-func (g *Grpc) WaitForToolsRunning(ctx context.Context, req *api.VirtualMachineRequest) (*api.WaitForToolsRunningResponse, error) {
+func (g *Grpc) WaitForToolsRunning(ctx context.Context, req *api.WaitForToolsRunningRequest) (*api.WaitForToolsRunningResponse, error) {
 	g.incrementInflight()
 
 	defer g.decrementInflight()
-	if running, err := g.vmrun.WaitForToolsRunning(req.Identifier); err != nil {
+	if running, err := g.vmrun.WaitForToolsRunning(req.Identifier, time.Duration(req.TimeoutInSeconds)*time.Second); err != nil {
 		if _, ok := status.FromError(err); ok {
 			return nil, err
 		}

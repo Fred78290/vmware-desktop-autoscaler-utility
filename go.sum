@@ -1,5 +1,5 @@
-github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230527125638-df583f6c6472 h1:FCB4f90DJC8JbFT5OSMe6/9zMj+z8W770l5OibZmYWs=
-github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230527125638-df583f6c6472/go.mod h1:YMVbf8fgYxkGySlCTCWJb3S/2n622OLWh8BFp4Qo2GM=
+github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230605085818-97ac5667a1da h1:ayx+93r910ZWcnAvqRJopU5qhPIev53tYQ0Mnhiti9c=
+github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230605085818-97ac5667a1da/go.mod h1:YMVbf8fgYxkGySlCTCWJb3S/2n622OLWh8BFp4Qo2GM=
 github.com/Fred78290/vmrest-go-client v0.1.2 h1:Rvl0RA7xiCNedI7JTZZ1rt4PAEgTyMIFoYjTwObPlJY=
 github.com/Fred78290/vmrest-go-client v0.1.2/go.mod h1:Kb/PK+CoaNY/Iq2bIpMnZ5J7rrZBivlZMT3kuBCMj4A=
 github.com/Masterminds/goutils v1.1.0/go.mod h1:8cTjp+g8YejhMuvIA5y2vz3BpJxksy863GQaJW2MFNU=

@@ -29,6 +29,7 @@ type ConfigTest struct {
 	Password   string          `json:"password"`
 	Template   string          `json:"template"`
 	TimeZone   string          `json:"time-zone"`
+	Timeout    time.Duration   `json:"timeout"`
 	AuthKey    string          `json:"ssh-key"`
 	NodeIndex  int             `json:"node-index"`
 	CloudInit  interface{}     `json:"cloud-init"`
@@ -75,6 +76,7 @@ func loadConfig() (*ConfigTest, error) {
 		return &config, err
 	} else {
 		err = json.Unmarshal([]byte(converted), &config)
+		config.Timeout = config.Timeout * time.Second
 		return &config, err
 	}
 }
@@ -112,6 +114,7 @@ func TestCreateVM(t *testing.T) {
 		})
 
 		c := &settings.CommonConfig{
+			Timeout:   config.Timeout,
 			VMRestURL: u.String(),
 			VMFolder:  os.Getenv("VMFOLDER"),
 		}
@@ -121,7 +124,7 @@ func TestCreateVM(t *testing.T) {
 			UserAgent:   "Test",
 			UserName:    os.Getenv("VMREST_USERNAME"),
 			Password:    os.Getenv("VMREST_PASSWORD"),
-			Timeout:     c.Timeout / time.Second,
+			Timeout:     config.Timeout / time.Second,
 			UnsecureTLS: true,
 		}
 
@@ -138,7 +141,7 @@ func TestCreateVM(t *testing.T) {
 				t.Errorf(message, err)
 
 				if vm != nil {
-					vmrun.PowerOff(vm.Uuid)
+					vmrun.PowerOff(vm.Uuid, "hard")
 					vmrun.Delete(vm.Uuid)
 				}
 			}
@@ -163,13 +166,13 @@ func TestCreateVM(t *testing.T) {
 				failOnError(vm, "failed to poweron vm: %v", err)
 			} else if err = waitForPowerState(vmrun, vm.Uuid, true); err != nil {
 				failOnError(vm, "failed to wait poweroff vm: %v", err)
-			} else if _, err := vmrun.WaitForToolsRunning(vm.Uuid); err != nil {
+			} else if _, err := vmrun.WaitForToolsRunning(vm.Uuid, configuration.Timeout); err != nil {
 				failOnError(vm, "failed to wait tools vm: %v", err)
-			} else if _, err := vmrun.WaitForIP(vm.Uuid); err != nil {
+			} else if _, err := vmrun.WaitForIP(vm.Uuid, configuration.Timeout); err != nil {
 				failOnError(vm, "failed to wait ip vm: %v", err)
 			} else if _, err := vmrun.Status(vm.Uuid); err != nil {
 				failOnError(vm, "failed to get status vm: %v", err)
-			} else if _, err := vmrun.PowerOff(vm.Uuid); err != nil {
+			} else if _, err := vmrun.PowerOff(vm.Uuid, "hard"); err != nil {
 				failOnError(vm, "failed to poweroff vm: %v", err)
 			} else if err = waitForPowerState(vmrun, vm.Uuid, false); err != nil {
 				failOnError(vm, "failed to wait poweroff vm: %v", err)

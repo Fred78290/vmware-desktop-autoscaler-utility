@@ -102,17 +102,21 @@ func (vmx *VMXMap) Load(vmxpath string) error {
 		for fileScanner.Scan() {
 			line := fileScanner.Text()
 
-			if strings.HasPrefix(line, "#!") && count == 0 {
-				vmx.headline = line
+			if strings.HasPrefix(line, "#!") {
+				if count == 0 {
+					vmx.headline = line
+				}
 			} else if !strings.HasPrefix(line, ".encoding") && !strings.HasPrefix(line, "#") {
-				segments := strings.Split(line, "=")
+				offset := strings.Index(line, "=")
 
-				if len(segments) == 2 {
-					key := strings.TrimSpace(segments[0])
-					value := strings.Trim(strings.TrimSpace(segments[1]), "\"")
+				if offset >= 0 {
+					key := strings.TrimSpace(line[:offset-1])
+					value := strings.Trim(strings.TrimSpace(line[offset+1:]), "\"")
 
 					vmx.vmx[key] = value
 					vmx.keys[strings.ToLower(key)] = key
+				} else {
+					fmt.Printf("Drop line:%s\n", line)
 				}
 			}
 

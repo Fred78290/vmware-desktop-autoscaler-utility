@@ -125,20 +125,11 @@ func (r *RegexpHandler) handleRoot(writ http.ResponseWriter, req *http.Request) 
 
 // Custom handlers
 func (r *RegexpHandler) handleStatus(writ http.ResponseWriter, req *http.Request) {
-	response := map[string]string{
-		"status":   "running",
-		"inflight": strconv.Itoa(r.api.Inflight()),
-	}
-
-	r.respond(writ, response, http.StatusOK)
+	r.respond(writ, newResponseWithKeyValue("status", "running", "inflight", strconv.Itoa(r.api.Inflight())), http.StatusOK)
 }
 
 func (r *RegexpHandler) handleVersion(writ http.ResponseWriter, req *http.Request) {
-	response := map[string]string{
-		"version": version.VERSION,
-	}
-
-	r.respond(writ, response, http.StatusOK)
+	r.respond(writ, newResponseWithKeyValue("version", version.VERSION), http.StatusOK)
 }
 
 func (r *RegexpHandler) pathParams(path string) map[string]string {

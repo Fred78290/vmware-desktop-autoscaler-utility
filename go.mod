@@ -1,9 +1,9 @@
 module github.com/Fred78290/vmware-desktop-autoscaler-utility
 
-go 1.19
+go 1.20
 
 require (
-	github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230527125638-df583f6c6472
+	github.com/Fred78290/kubernetes-desktop-autoscaler v0.0.0-20230605085818-97ac5667a1da
 	github.com/Fred78290/vmrest-go-client v0.1.2
 	github.com/drone/envsubst v1.0.3
 	github.com/hashicorp/go-hclog v0.16.1
