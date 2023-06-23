@@ -13,12 +13,16 @@ import (
 )
 
 func installDirectory() string {
-	idir := "/usr/local/bin/vmware-desktop-autoscaler-utility"
-	exePath, err := os.Executable()
-	if err == nil && !strings.HasPrefix(exePath, idir) {
-		idir = filepath.Dir(exePath)
+	if home, err := os.UserHomeDir(); err != nil {
+		return ""
+	} else {
+		idir := path.Join(home, "Library/DesktopAutoscalerUtility/vmware-desktop-autoscaler-utility")
+		exePath, err := os.Executable()
+		if err == nil && !strings.HasPrefix(exePath, idir) {
+			idir = filepath.Dir(exePath)
+		}
+		return idir
 	}
-	return idir
 }
 
 func directoryForVirtualMachine(vmfolder, name string) string {
