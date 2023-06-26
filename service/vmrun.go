@@ -60,6 +60,14 @@ type NetworkInterface struct {
 	DisplayName    string `json:"displayName,omitempty"`
 }
 
+type NetworkDevice struct {
+	Name   string `json:"name,omitempty" yaml:"name,omitempty"`
+	Type   string `json:"type,omitempty" yaml:"type,omitempty"`
+	Dhcp   bool   `json:"dhcp,omitempty" yaml:"dhcp,omitempty"`
+	Subnet string `json:"subnet,omitempty" yaml:"subnet,omitempty"`
+	Mask   string `json:"mask,omitempty" yaml:"mask,omitempty"`
+}
+
 type CreateVirtualMachine struct {
 	Template     string              `json:"template,omitempty"`
 	Name         string              `json:"name,omitempty"`
@@ -94,6 +102,7 @@ type Vmrun interface {
 	VirtualMachineByName(vmname string) (*VirtualMachine, error)
 	VirtualMachineByUUID(vmuuid string) (*VirtualMachine, error)
 	ListVirtualMachines() ([]*VirtualMachine, error)
+	ListNetworks() ([]*NetworkDevice, error)
 	AddNetworkInterface(vmuuid, vnet string) error
 	ChangeNetworkInterface(vmuuid, vnet string, nic int) error
 }
@@ -1089,5 +1098,25 @@ func (v *VmrunExe) ChangeNetworkInterface(vmuuid, vmnet string, nic int) error {
 		}
 
 		return vmx.Save(found.Path)
+	}
+}
+
+func (v *VmrunExe) ListNetworks() ([]*NetworkDevice, error) {
+	if networks, err := v.client.GetAllNetworks(); err != nil {
+		return nil, err
+	} else {
+		result := make([]*NetworkDevice, 0, len(networks.Vmnets))
+
+		for _, network := range networks.Vmnets {
+			result = append(result, &NetworkDevice{
+				Name:   network.Name,
+				Type:   network.Type,
+				Dhcp:   utils.StrToBool(network.Dhcp),
+				Subnet: network.Subnet,
+				Mask:   network.Mask,
+			})
+		}
+
+		return result, nil
 	}
 }

@@ -682,3 +682,42 @@ func (g *Grpc) ListVirtualMachines(ctx context.Context, req *api.VirtualMachines
 		}, nil
 	}
 }
+
+func (g *Grpc) ListNetwork(context.Context, *api.NetworkRequest) (*api.NetworkResponse, error) {
+
+	g.incrementInflight()
+
+	defer g.decrementInflight()
+
+	if vmnets, err := g.vmrun.ListNetworks(); err != nil {
+		return &api.NetworkResponse{
+			Response: &api.NetworkResponse_Error{
+				Error: &api.ClientError{
+					Code:   500,
+					Reason: err.Error(),
+				},
+			},
+		}, nil
+	} else {
+		networks := make([]*api.NetworkDevice, 0, len(vmnets))
+
+		for _, vmnet := range vmnets {
+			networks = append(networks, &api.NetworkDevice{
+				Name:   vmnet.Name,
+				Type:   vmnet.Type,
+				Dhcp:   vmnet.Dhcp,
+				Subnet: vmnet.Subnet,
+				Mask:   vmnet.Mask,
+			})
+		}
+
+		return &api.NetworkResponse{
+			Response: &api.NetworkResponse_Result{
+				Result: &api.NetworkReply{
+					Num:    int32(len(vmnets)),
+					Vmnets: networks,
+				},
+			},
+		}, nil
+	}
+}
