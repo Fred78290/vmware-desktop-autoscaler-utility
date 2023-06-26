@@ -362,7 +362,7 @@ func (v *VmrunExe) expandDisk(vmxpath string, diskSizeInMb int, vmx *utils.VMXMa
 				cmd := exec.Command(v.exeVdiskManager, "-x", fmt.Sprintf("%dMB", diskSizeInMb), vmdk)
 				exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
 
-				if exitCode != 0 {
+				if exitCode != 0 && !strings.Contains(out, "One of the parameters supplied is invalid") {
 					v.logger.Debug("vmware-vdiskmanager failed", "exitcode", exitCode)
 					v.logger.Trace("vmware-vdiskmanager failed", "output", out)
 
