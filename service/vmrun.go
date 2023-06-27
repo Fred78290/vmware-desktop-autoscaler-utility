@@ -9,6 +9,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Fred78290/vmrest-go-client/client"
@@ -108,6 +109,7 @@ type Vmrun interface {
 }
 
 type VmrunExe struct {
+	sync.Mutex
 	exeVdiskManager string
 	exePath         string
 	logger          hclog.Logger
@@ -250,6 +252,9 @@ func (v *VmrunExe) fetchVM(vmuuid, vmx string) (vm *VirtualMachine, err error) {
 }
 
 func (v *VmrunExe) registeredVM() error {
+	v.Lock()
+	defer v.Unlock()
+
 	if vms, err := v.client.GetAllVMs(); err != nil {
 		return err
 	} else {
@@ -522,6 +527,17 @@ func (v *VmrunExe) prepareVM(request *CreateVirtualMachine, vm *VirtualMachine) 
 	return
 }
 
+func (v *VmrunExe) Create(request *CreateVirtualMachine) (*VirtualMachine, error) {
+	v.Lock()
+	defer v.Unlock()
+
+	if v.clonevm {
+		return v.createWithVMRun(request)
+	} else {
+		return v.createWithVMRest(request)
+	}
+}
+
 func (v *VmrunExe) createVM(template *VirtualMachine, name string) (vm *VirtualMachine, err error) {
 	var infos *model.VmInformation
 
@@ -530,14 +546,6 @@ func (v *VmrunExe) createVM(template *VirtualMachine, name string) (vm *VirtualM
 	}
 
 	return v.VirtualMachineByUUID(infos.Id)
-}
-
-func (v *VmrunExe) Create(request *CreateVirtualMachine) (*VirtualMachine, error) {
-	if v.clonevm {
-		return v.createWithVMRun(request)
-	} else {
-		return v.createWithVMRest(request)
-	}
 }
 
 func (v *VmrunExe) createWithVMRest(request *CreateVirtualMachine) (*VirtualMachine, error) {
@@ -609,6 +617,9 @@ func (v *VmrunExe) deleteWithVMRest(vmuuid string) (bool, error) {
 }
 
 func (v *VmrunExe) Delete(vmuuid string) (bool, error) {
+	v.Lock()
+	defer v.Unlock()
+
 	if v.clonevm {
 		return v.deleteWithVMRun(vmuuid)
 	} else {
@@ -625,6 +636,9 @@ func (v *VmrunExe) PowerState(vmuuid string) (bool, error) {
 }
 
 func (v *VmrunExe) PowerOn(vmuuid string) (bool, error) {
+	v.Lock()
+	defer v.Unlock()
+
 	if found, err := v.VirtualMachineByUUID(vmuuid); err != nil {
 		return false, status.Errorf(codes.NotFound, failedtofindvm, vmuuid, err)
 	} else if found.Powered {
@@ -647,6 +661,9 @@ func (v *VmrunExe) PowerOn(vmuuid string) (bool, error) {
 }
 
 func (v *VmrunExe) PowerOff(vmuuid, mode string) (bool, error) {
+	v.Lock()
+	defer v.Unlock()
+
 	if found, err := v.VirtualMachineByUUID(vmuuid); err != nil {
 		return false, status.Errorf(codes.NotFound, failedtofindvm, vmuuid, err)
 	} else if !found.Powered {
@@ -669,6 +686,9 @@ func (v *VmrunExe) PowerOff(vmuuid, mode string) (bool, error) {
 }
 
 func (v *VmrunExe) ShutdownGuest(vmuuid string) (bool, error) {
+	v.Lock()
+	defer v.Unlock()
+
 	if found, err := v.VirtualMachineByUUID(vmuuid); err != nil {
 		return false, status.Errorf(codes.NotFound, failedtofindvm, vmuuid, err)
 	} else if !found.Powered {
