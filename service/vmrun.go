@@ -855,7 +855,7 @@ func (v *VmrunExe) WaitForIP(vmuuid string, timeout time.Duration) (string, erro
 
 				if exitCode != 0 {
 					// Got it on linux
-					if strings.HasPrefix(out, "Error: Unable to get the IP address") || strings.HasPrefix(out, "Error: The VMware Tools are not running in the virtual machine") {
+					if strings.HasPrefix(out, "Error: Unable to get the IP address") || strings.HasPrefix(out, "Error: Cannot open VM:") || strings.HasPrefix(out, "Error: The VMware Tools are not running in the virtual machine") {
 						return false, nil
 					}
 
@@ -881,14 +881,14 @@ func (v *VmrunExe) vmwareToolsStatus(vm *VirtualMachine) error {
 		vm.ToolsStatus = "running"
 	} else {
 		cmd := exec.Command(v.exePath, "checkToolsState", vm.Path)
-		exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
-
-		if exitCode != 0 {
-			v.logger.Debug("vmrun checkToolsState failed", "exitcode", exitCode)
-			v.logger.Trace("vmrun checkToolsState failed", "output", out)
-
-			return status.Errorf(codes.Internal, "failed to wait for tools running for VM: %s, reason: %s", vm.Uuid, out)
-		}
+		_, out := vagrant_utility.ExecuteWithOutput(cmd)
+		// ignore exit code
+		//		if exitCode != 0 {
+		//			v.logger.Debug("vmrun checkToolsState failed", "exitcode", exitCode)
+		//			v.logger.Trace("vmrun checkToolsState failed", "output", out)
+		//
+		//			return status.Errorf(codes.Internal, "failed to wait for tools running for VM: %s, reason: %s", vm.Uuid, out)
+		//		}
 
 		if strings.HasPrefix(out, "running") {
 			vm.ToolsStatus = "running"
