@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	DEFAULT_GRPCAPI_ADDRESS = "0.0.0.0:5323"
+	DEFAULT_GRPCAPI_ADDRESS = "tcp://0.0.0.0:5323"
 	DEFAULT_VMREST_ADDRESS  = ""
 )
 
