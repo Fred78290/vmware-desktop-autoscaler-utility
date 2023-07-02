@@ -106,6 +106,7 @@ type Vmrun interface {
 	ListNetworks() ([]*NetworkDevice, error)
 	AddNetworkInterface(vmuuid, vnet string) error
 	ChangeNetworkInterface(vmuuid, vnet string, nic int) error
+	StartAutostartVM() error
 }
 
 type VmrunExe struct {
@@ -635,6 +636,22 @@ func (v *VmrunExe) PowerState(vmuuid string) (bool, error) {
 	}
 }
 
+func (v *VmrunExe) powerOnVM(vm *VirtualMachine) error {
+	cmd := exec.Command(v.exePath, "start", vm.Path, "nogui")
+	exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
+
+	if exitCode != 0 {
+		v.logger.Debug("vmrun start failed", "exitcode", exitCode)
+		v.logger.Trace("vmrun start failed", "output", out)
+
+		return status.Errorf(codes.Internal, "failed to power on VM: %s, reason: %s", vm.Uuid, out)
+	}
+
+	vm.Powered = true
+
+	return nil
+}
+
 func (v *VmrunExe) PowerOn(vmuuid string) (bool, error) {
 	v.Lock()
 	defer v.Unlock()
@@ -643,18 +660,8 @@ func (v *VmrunExe) PowerOn(vmuuid string) (bool, error) {
 		return false, status.Errorf(codes.NotFound, failedtofindvm, vmuuid, err)
 	} else if found.Powered {
 		return true, nil
-	} else {
-		cmd := exec.Command(v.exePath, "start", found.Path, "nogui")
-		exitCode, out := vagrant_utility.ExecuteWithOutput(cmd)
-
-		if exitCode != 0 {
-			v.logger.Debug("vmrun start failed", "exitcode", exitCode)
-			v.logger.Trace("vmrun start failed", "output", out)
-
-			return false, status.Errorf(codes.Internal, "failed to power on VM: %s, reason: %s", vmuuid, out)
-		}
-
-		found.Powered = true
+	} else if err = v.powerOnVM(found); err != nil {
+		return false, err
 	}
 
 	return true, nil
@@ -931,13 +938,35 @@ func (v *VmrunExe) WaitForToolsRunning(vmuuid string, timeout time.Duration) (bo
 	}
 }
 
+func (v *VmrunExe) StartAutostartVM() error {
+	if vms, err := v.ListVirtualMachines(); err != nil {
+		return err
+	} else {
+		for _, vm := range vms {
+			if param, _ := v.client.GetVMParams(vm.Uuid, "autostart"); !vm.Powered && utils.StrToBool(param.Value) {
+				if err = v.powerOnVM(vm); err != nil {
+					v.logger.Error(fmt.Sprintf("unable to autostart VM: %s, %s", vm.Uuid, vm.Name))
+				} else {
+					v.logger.Info(fmt.Sprintf("Started VM: %s, %s", vm.Uuid, vm.Name))
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func (v *VmrunExe) SetAutoStart(vmuuid string, autostart bool) (bool, error) {
-	if _, err := v.VirtualMachineByUUID(vmuuid); err != nil {
+	if vm, err := v.VirtualMachineByUUID(vmuuid); err != nil {
 		return false, err
-		//	} else if vm.Powered {
-		//		return false, status.Errorf(codes.FailedPrecondition, "failed to set autostart for VM: %s is powered", vmuuid)
-		//	} else {
-		//		return false, status.Errorf(codes.Unimplemented, "method SetAutoStart not yet defined for %s", vm.Path)
+	} else if vmx, err := utils.LoadVMX(vm.Path); err != nil {
+		return false, err
+	} else {
+		vmx.Set("autostart", utils.BoolToStr(autostart))
+
+		if err = vmx.Save(vm.Path); err != nil {
+			return false, err
+		}
 	}
 
 	return autostart, nil

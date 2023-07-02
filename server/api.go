@@ -107,6 +107,8 @@ func (a *Api) Start() error {
 		return err
 	}
 
+	a.router.vmrun.StartAutostartVM()
+
 	listener, err := tls.Listen("tcp", fmt.Sprintf("%s:%d", a.Address, a.Port), tlsConfig)
 
 	if err != nil {
