@@ -87,8 +87,8 @@ const VMWARE_NETDEV_PREFIX = "vmnet"
 const VAGRANT_NETDEV_PREFIX = "vgtnet"
 
 type ConfigStorage struct {
-	User     string
-	Password string
+	User     string `json:"username"`
+	Password string `json:"password"`
 }
 
 func (v *vmrest) Init() error {
