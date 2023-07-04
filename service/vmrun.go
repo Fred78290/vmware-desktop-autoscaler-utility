@@ -24,6 +24,10 @@ import (
 )
 
 const (
+	vmnameKey       = "displayname"
+	numcpusKey      = "numvcpus"
+	memsizeKey      = "memsize"
+	guestinfoKey    = "guestinfo."
 	vmrunlistfailed = "vmrun list failed"
 	vmrunstopfailed = "vmrun stop failed"
 	toolsnotrunning = "not running"
@@ -229,7 +233,7 @@ func (v *VmrunExe) fetchVM(vmuuid, vmx string) (vm *VirtualMachine, err error) {
 
 	if info, err = v.client.GetVM(vmuuid); err == nil {
 
-		if name, err = v.client.GetVMParams(vmuuid, "vmname"); err == nil {
+		if name, err = v.client.GetVMParams(vmuuid, vmnameKey); err == nil {
 			if ip, err = v.fetchIPAddress(vmuuid); err != nil {
 				return
 			} else if ip != nil {
@@ -456,14 +460,14 @@ func (v *VmrunExe) prepareNetworkInterface(request *CreateVirtualMachine, vmx *u
 func (v *VmrunExe) prepareVMX(request *CreateVirtualMachine, vmxpath string, vmx *utils.VMXMap) (string, error) {
 	vmx.Cleanup(len(request.Networks) > 0)
 
-	vmx.Set("vmname", request.Name)
-	vmx.Set("numvcpus", strconv.Itoa(request.Vcpus))
-	vmx.Set("memsize", strconv.Itoa(request.Memory))
+	vmx.Set(vmnameKey, request.Name)
+	vmx.Set(numcpusKey, strconv.Itoa(request.Vcpus))
+	vmx.Set(memsizeKey, strconv.Itoa(request.Memory))
 
 	// Set new guest infos
 	if request.GuestInfos != nil {
 		for k, v := range request.GuestInfos {
-			vmx.Set("guestinfo."+k, v)
+			vmx.Set(guestinfoKey+k, v)
 		}
 	}
 
@@ -497,14 +501,14 @@ func (v *VmrunExe) prepareVM(request *CreateVirtualMachine, vm *VirtualMachine) 
 
 	vmx.Cleanup(len(request.Networks) > 0)
 
-	vmx.Set("vmname", request.Name)
-	vmx.Set("numvcpus", strconv.Itoa(request.Vcpus))
-	vmx.Set("memsize", strconv.Itoa(request.Memory))
+	vmx.Set(vmnameKey, request.Name)
+	vmx.Set(numcpusKey, strconv.Itoa(request.Vcpus))
+	vmx.Set(memsizeKey, strconv.Itoa(request.Memory))
 
 	// Set new guest infos
 	if request.GuestInfos != nil {
 		for k, v := range request.GuestInfos {
-			vmx.Set("guestinfo."+k, v)
+			vmx.Set(guestinfoKey+k, v)
 		}
 	}
 
@@ -977,7 +981,7 @@ func (v *VmrunExe) findVM(vmname string) (*VirtualMachine, error) {
 		return nil, err
 	} else {
 		for _, vm := range vms {
-			if name, err := v.client.GetVMParams(vm.Id, "vmname"); err == nil {
+			if name, err := v.client.GetVMParams(vm.Id, vmnameKey); err == nil {
 				if name.Value == vmname {
 					if foundVM, err := v.fetchVM(vm.Id, vm.Path); err == nil {
 						v.cachebyuuid[vm.Id] = foundVM
