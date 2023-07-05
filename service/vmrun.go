@@ -275,7 +275,7 @@ func (v *VmrunExe) registeredVM() error {
 			} else {
 				cachebyuuid[vm.Id] = registered
 				cachebyvmx[vm.Path] = registered
-				cachebyvmx[registered.Name] = registered
+				cachebyname[registered.Name] = registered
 			}
 		}
 
