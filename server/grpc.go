@@ -257,6 +257,7 @@ func (g *Grpc) Create(ctx context.Context, req *api.CreateRequest) (*api.CreateR
 		GuestInfos:   req.GuestInfos,
 		Linked:       req.Linked,
 		Register:     req.Register,
+		Autostart:    req.Autostart,
 	}
 
 	if result, err := g.vmrun.Create(request); err != nil {

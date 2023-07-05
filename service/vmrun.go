@@ -27,6 +27,7 @@ const (
 	vmnameKey       = "displayname"
 	numcpusKey      = "numvcpus"
 	memsizeKey      = "memsize"
+	autostartKey    = "autostart"
 	guestinfoKey    = "guestinfo."
 	vmrunlistfailed = "vmrun list failed"
 	vmrunstopfailed = "vmrun stop failed"
@@ -83,6 +84,7 @@ type CreateVirtualMachine struct {
 	GuestInfos   map[string]string   `json:"guestInfos,omitempty"`
 	Linked       bool                `json:"linked,omitempty"`
 	Register     bool                `json:"register,omitempty"`
+	Autostart    bool                `json:"autostart,omitempty"`
 }
 
 type networkInfo struct {
@@ -463,6 +465,7 @@ func (v *VmrunExe) prepareVMX(request *CreateVirtualMachine, vmxpath string, vmx
 	vmx.Set(vmnameKey, request.Name)
 	vmx.Set(numcpusKey, strconv.Itoa(request.Vcpus))
 	vmx.Set(memsizeKey, strconv.Itoa(request.Memory))
+	vmx.Set(autostartKey, utils.BoolToStr(request.Autostart))
 
 	// Set new guest infos
 	if request.GuestInfos != nil {
@@ -504,6 +507,7 @@ func (v *VmrunExe) prepareVM(request *CreateVirtualMachine, vm *VirtualMachine) 
 	vmx.Set(vmnameKey, request.Name)
 	vmx.Set(numcpusKey, strconv.Itoa(request.Vcpus))
 	vmx.Set(memsizeKey, strconv.Itoa(request.Memory))
+	vmx.Set(autostartKey, utils.BoolToStr(request.Autostart))
 
 	// Set new guest infos
 	if request.GuestInfos != nil {
