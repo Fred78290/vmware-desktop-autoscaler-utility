@@ -137,7 +137,7 @@ func (c *ServiceInstallCommand) writeConfig(fpath string) (cpath string, err err
 	if fpath != "" {
 		cpath = fpath
 	} else {
-		cpath = filepath.Join(vagrant_utility.DirectoryFor("config"), "service.hcl")
+		cpath = filepath.Join(utility.DirectoryForConfig("service.hcl"))
 	}
 
 	config := Config{
