@@ -42,6 +42,7 @@ func BuildRestApiCommand(name string, waitRestApi bool, ui cli.Ui) cli.CommandFa
 		data["license_override"] = flags.String("license-override", "", "Override VMware license detection (standard or professional)")
 		data["timeout"] = flags.Duration("timeout", 120*time.Second, "Timeout for operation")
 		data["vmfolder"] = flags.String("vmfolder", utility.VMFolder(), "Location for vm")
+		data["vmrest"] = flags.String("vmrest", DEFAULT_VMREST_ADDRESS, "Address for external vmrest api when driver is not vmrest")
 
 		return &RestApiCommand{
 			Command: Command{
