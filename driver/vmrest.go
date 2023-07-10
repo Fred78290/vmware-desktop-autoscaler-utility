@@ -537,16 +537,11 @@ func NewVmrest(ctx context.Context, externalVMRestURL string, vmrestPath string,
 func NewVmrestDriver(ctx context.Context, c *settings.CommonConfig, f Driver, logger hclog.Logger) (Driver, error) {
 	logger = logger.Named("vmrest")
 
-	if i, err := f.VmwareInfo(); err != nil {
+	if _, err := f.VmwareInfo(); err != nil {
 
 		logger.Warn("failed to get vmware info", "error", err)
 		logger.Info("using fallback driver")
 
-		return f, nil
-
-	} else if i.IsStandard() {
-
-		logger.Warn("standard vmware license detected, using fallback")
 		return f, nil
 
 	} else {
