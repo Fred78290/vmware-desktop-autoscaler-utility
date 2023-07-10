@@ -47,3 +47,7 @@ func vmfolderDirectory() string {
 		return home
 	}
 }
+
+func directoryForConfig() string {
+	return certificatDirectory()
+}

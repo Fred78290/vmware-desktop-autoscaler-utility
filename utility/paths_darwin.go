@@ -62,3 +62,19 @@ func vmfolderDirectory() string {
 		return home
 	}
 }
+
+func directoryForConfig() string {
+	if home, err := os.UserHomeDir(); err != nil {
+		return ""
+	} else {
+		home = path.Join(home, "Library/Application Support/vmware-desktop-autoscaler-utility")
+		if _, err := os.Stat(home); errors.Is(err, os.ErrNotExist) {
+			err := os.Mkdir(home, os.ModePerm)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+
+		return home
+	}
+}
