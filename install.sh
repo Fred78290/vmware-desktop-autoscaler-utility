@@ -8,13 +8,13 @@ curl -Ls https://github.com/Fred78290/vmware-desktop-autoscaler-utility/releases
 chmod +x /tmp/vmware-desktop-autoscaler-utility
 
 if [ ${OSDISTRO} == "linux" ]; then
-	TARGET_DIR=${HOME}/.local/vmware
+	TARGET_DIR=/usr/local/bin
 else
 	TARGET_DIR=${HOME}/Library/DesktopAutoscalerUtility
 fi
 
-mkdir -p ${TARGET_DIR}
-mv /tmp/vmware-desktop-autoscaler-utility ${TARGET_DIR}
+sudo mkdir -p ${TARGET_DIR}
+sudo mv /tmp/vmware-desktop-autoscaler-utility ${TARGET_DIR}
 
 ${TARGET_DIR}/vmware-desktop-autoscaler-utility certificate generate
 ${TARGET_DIR}/vmware-desktop-autoscaler-utility service install
